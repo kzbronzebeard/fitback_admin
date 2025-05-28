@@ -34,6 +34,7 @@ const COOKIE_OPTIONS = {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  console.log("[AUTH DEBUG] AuthProvider initializing")
   const [user, setUser] = useState<User | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -65,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [sessionId])
 
   const checkExistingSession = async () => {
+    console.log("[AUTH DEBUG] checkExistingSession started, isLoading:", true)
     try {
       // Get session from both cookie and localStorage for backward compatibility
       const cookieSessionId = Cookies.get("fitback_session_id")
@@ -72,6 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Prefer cookie, fall back to localStorage
       const sessionId = cookieSessionId || storedSessionId
+
+      console.log("[AUTH DEBUG] Found sessionId:", sessionId ? "exists" : "none")
 
       if (!sessionId) {
         setIsLoading(false)
@@ -98,6 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const result = await response.json()
 
+      console.log(
+        "[AUTH DEBUG] Session validation result:",
+        result.success ? "valid" : "invalid",
+        result.user ? `user: ${result.user.email}` : "no user",
+      )
+
       if (result.success && result.user) {
         setUser(result.user)
         setSessionId(sessionId)
@@ -115,11 +125,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("fitback_session_id")
       localStorage.removeItem("fitback_last_extension")
     } finally {
+      console.log("[AUTH DEBUG] checkExistingSession completed, setting isLoading to false")
       setIsLoading(false)
     }
   }
 
   const login = (newSessionId: string, userData: User) => {
+    console.log("[AUTH DEBUG] Login called for user:", userData.email)
     console.log("[AUTH CONTEXT] Logging in user:", userData.email)
     const userWithSession = { ...userData, sessionId: newSessionId }
     setUser(userWithSession)
@@ -131,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const logout = async () => {
+    console.log("[AUTH DEBUG] Logout called")
     console.log("[AUTH CONTEXT] Logging out user")
 
     if (sessionId) {
@@ -204,6 +217,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     extendUserSession,
   }
+
+  useEffect(() => {
+    console.log(
+      "[AUTH DEBUG] Auth state changed - user:",
+      user?.email || "none",
+      "sessionId:",
+      sessionId ? "exists" : "none",
+      "isLoading:",
+      isLoading,
+      "isAuthenticated:",
+      !!user && !!sessionId,
+    )
+  }, [user, sessionId, isLoading])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
