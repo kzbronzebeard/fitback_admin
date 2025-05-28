@@ -19,6 +19,12 @@ export async function middleware(request: NextRequest) {
 
   console.log("[MIDDLEWARE] Checking route:", pathname, "Session:", !!sessionId)
 
+  // Add comprehensive logging at the beginning of the middleware function
+  console.log("[MIDDLEWARE DEBUG] Route:", pathname)
+  console.log("[MIDDLEWARE DEBUG] Session ID:", sessionId)
+  console.log("[MIDDLEWARE DEBUG] Has SUPABASE_URL:", !!process.env.SUPABASE_URL)
+  console.log("[MIDDLEWARE DEBUG] Has SUPABASE_SERVICE_ROLE_KEY:", !!process.env.SUPABASE_SERVICE_ROLE_KEY)
+
   // Allow public routes without authentication
   if (publicRoutes.some((route) => pathname === route || pathname.startsWith(route))) {
     return NextResponse.next()
@@ -35,20 +41,25 @@ export async function middleware(request: NextRequest) {
     }
 
     try {
+      console.log("[MIDDLEWARE DEBUG] Validating session:", sessionId)
       const sessionResult = await validateSession(sessionId)
+      console.log("[MIDDLEWARE DEBUG] Session validation result:", {
+        isValid: sessionResult.isValid,
+        error: sessionResult.error,
+        hasUser: !!sessionResult.user,
+      })
 
       if (!sessionResult.isValid) {
-        console.log("[MIDDLEWARE] Invalid session, redirecting to login")
+        console.log("[MIDDLEWARE DEBUG] Invalid session, redirecting to login")
         const response = NextResponse.redirect(new URL("/auth/login", request.url))
         response.cookies.delete("fitback_session_id")
         return response
       }
 
-      // Session is valid, continue with request
-      console.log("[MIDDLEWARE] Valid session, allowing access to:", pathname)
+      console.log("[MIDDLEWARE DEBUG] Valid session, allowing access to:", pathname)
       return NextResponse.next()
     } catch (error) {
-      console.error("[MIDDLEWARE] Error validating session:", error)
+      console.error("[MIDDLEWARE DEBUG] Error validating session:", error)
       const response = NextResponse.redirect(new URL("/auth/login", request.url))
       response.cookies.delete("fitback_session_id")
       return response
