@@ -23,6 +23,18 @@ interface AuthContextType {
   extendUserSession: () => Promise<void>
 }
 
+// Define window augmentation for TypeScript
+declare global {
+  interface Window {
+    __FITBACK_AUTH_STATE__?: {
+      user: User | null
+      sessionId: string | null
+      isInitialized: boolean
+      lastCheck: number
+    }
+  }
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 // Cookie configuration
@@ -33,37 +45,62 @@ const COOKIE_OPTIONS = {
   sameSite: "lax" as const,
 }
 
-// Create a stable auth state that persists between re-renders
-const globalAuthState = {
-  user: null as User | null,
-  sessionId: null as string | null,
-  isInitialized: false,
+// Initialize global state on window object (client-side only)
+const initGlobalState = () => {
+  if (typeof window !== "undefined") {
+    window.__FITBACK_AUTH_STATE__ = window.__FITBACK_AUTH_STATE__ || {
+      user: null,
+      sessionId: null,
+      isInitialized: false,
+      lastCheck: 0,
+    }
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   console.log("[AUTH DEBUG] AuthProvider initializing")
 
-  // Use refs to track initialization state
+  // Initialize global state
+  initGlobalState()
+
+  // Use ref to track initialization
   const initRef = useRef(false)
 
-  // Use state with initial values from global state
-  const [user, setUser] = useState<User | null>(globalAuthState.user)
-  const [sessionId, setSessionId] = useState<string | null>(globalAuthState.sessionId)
-  const [isLoading, setIsLoading] = useState(!globalAuthState.isInitialized)
-  const [lastExtensionTime, setLastExtensionTime] = useState<number | null>(null)
-
-  // Check for existing session on mount, but only if not already initialized
-  useEffect(() => {
-    if (!initRef.current) {
-      initRef.current = true
-
-      if (!globalAuthState.isInitialized) {
-        checkExistingSession()
-      } else {
-        console.log("[AUTH DEBUG] Using cached auth state, skipping session check")
-        setIsLoading(false)
+  // Get initial state from window object or defaults
+  const getInitialState = () => {
+    if (typeof window !== "undefined" && window.__FITBACK_AUTH_STATE__?.isInitialized) {
+      return {
+        user: window.__FITBACK_AUTH_STATE__.user,
+        sessionId: window.__FITBACK_AUTH_STATE__.sessionId,
+        isLoading: false,
       }
     }
+    return { user: null, sessionId: null, isLoading: true }
+  }
+
+  const initialState = getInitialState()
+  const [user, setUser] = useState<User | null>(initialState.user)
+  const [sessionId, setSessionId] = useState<string | null>(initialState.sessionId)
+  const [isLoading, setIsLoading] = useState(initialState.isLoading)
+  const [lastExtensionTime, setLastExtensionTime] = useState<number | null>(null)
+
+  // Check for existing session on mount, but only if needed
+  useEffect(() => {
+    if (initRef.current) return
+    initRef.current = true
+
+    const globalState = typeof window !== "undefined" ? window.__FITBACK_AUTH_STATE__ : null
+
+    // Skip check if we have recent data (less than 5 minutes old)
+    const FIVE_MINUTES = 5 * 60 * 1000
+    const shouldSkipCheck = globalState?.isInitialized && Date.now() - (globalState?.lastCheck || 0) < FIVE_MINUTES
+
+    if (shouldSkipCheck) {
+      console.log("[AUTH DEBUG] Using cached auth state (< 5min), skipping session check")
+      return
+    }
+
+    checkExistingSession()
   }, [])
 
   // Extend session on activity
@@ -100,7 +137,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!sessionId) {
         setIsLoading(false)
-        globalAuthState.isInitialized = true
+        if (typeof window !== "undefined") {
+          window.__FITBACK_AUTH_STATE__ = {
+            user: null,
+            sessionId: null,
+            isInitialized: true,
+            lastCheck: Date.now(),
+          }
+        }
         return
       }
 
@@ -131,13 +175,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
 
       if (result.success && result.user) {
-        // Update both local state and global state
+        // Update local state
         setUser(result.user)
         setSessionId(sessionId)
 
-        // Update global state to persist between re-renders
-        globalAuthState.user = result.user
-        globalAuthState.sessionId = sessionId
+        // Update global state
+        if (typeof window !== "undefined") {
+          window.__FITBACK_AUTH_STATE__ = {
+            user: result.user,
+            sessionId: sessionId,
+            isInitialized: true,
+            lastCheck: Date.now(),
+          }
+        }
 
         console.log("[AUTH CONTEXT] Session restored for user:", result.user.email)
       } else {
@@ -145,6 +195,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         Cookies.remove("fitback_session_id")
         localStorage.removeItem("fitback_session_id")
         localStorage.removeItem("fitback_last_extension")
+
+        // Update global state
+        if (typeof window !== "undefined") {
+          window.__FITBACK_AUTH_STATE__ = {
+            user: null,
+            sessionId: null,
+            isInitialized: true,
+            lastCheck: Date.now(),
+          }
+        }
+
         console.log("[AUTH CONTEXT] Invalid session cleared")
       }
     } catch (error) {
@@ -152,10 +213,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       Cookies.remove("fitback_session_id")
       localStorage.removeItem("fitback_session_id")
       localStorage.removeItem("fitback_last_extension")
+
+      // Update global state on error
+      if (typeof window !== "undefined") {
+        window.__FITBACK_AUTH_STATE__ = {
+          user: null,
+          sessionId: null,
+          isInitialized: true,
+          lastCheck: Date.now(),
+        }
+      }
     } finally {
       console.log("[AUTH DEBUG] checkExistingSession completed, setting isLoading to false")
       setIsLoading(false)
-      globalAuthState.isInitialized = true
     }
   }
 
@@ -164,14 +234,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log("[AUTH CONTEXT] Logging in user:", userData.email)
     const userWithSession = { ...userData, sessionId: newSessionId }
 
-    // Update both local state and global state
+    // Update local state
     setUser(userWithSession)
     setSessionId(newSessionId)
 
-    // Update global state to persist between re-renders
-    globalAuthState.user = userWithSession
-    globalAuthState.sessionId = newSessionId
-    globalAuthState.isInitialized = true
+    // Update global state
+    if (typeof window !== "undefined") {
+      window.__FITBACK_AUTH_STATE__ = {
+        user: userWithSession,
+        sessionId: newSessionId,
+        isInitialized: true,
+        lastCheck: Date.now(),
+      }
+    }
 
     // Set in both cookie and localStorage
     Cookies.set("fitback_session_id", newSessionId, COOKIE_OPTIONS)
@@ -194,14 +269,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Update both local state and global state
+    // Update local state
     setUser(null)
     setSessionId(null)
     setLastExtensionTime(null)
 
-    // Update global state to persist between re-renders
-    globalAuthState.user = null
-    globalAuthState.sessionId = null
+    // Update global state
+    if (typeof window !== "undefined") {
+      window.__FITBACK_AUTH_STATE__ = {
+        user: null,
+        sessionId: null,
+        isInitialized: true,
+        lastCheck: Date.now(),
+      }
+    }
 
     // Clear both cookie and localStorage
     Cookies.remove("fitback_session_id")
