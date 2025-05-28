@@ -35,7 +35,7 @@ export default function AdminFeedbacks() {
   useEffect(() => {
     const fetchFeedbacks = async () => {
       try {
-        const response = await fetch("/api/feedbacks", {
+        const response = await fetch("/api/admin/feedbacks", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
