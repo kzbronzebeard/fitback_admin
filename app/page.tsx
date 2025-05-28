@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Shield } from "lucide-react"
 import { getImageUrl, HERO_IMAGE_FILENAMES } from "./utils/supabase-image"
+import { useAuth } from "@/app/context/auth-context"
 
 // Add satin sheen effect at the top of the file
 const allStyles = `
@@ -42,6 +43,7 @@ const allStyles = `
 
 export default function WelcomeScreen() {
   const router = useRouter()
+  const { isAuthenticated, isLoading } = useAuth()
   const [isLoaded, setIsLoaded] = useState(false)
   const [activeCardIndex, setActiveCardIndex] = useState(0)
   const [imageError, setImageError] = useState(false)
@@ -72,13 +74,19 @@ export default function WelcomeScreen() {
   }, [isLoaded])
 
   const handleGetStarted = () => {
-    if (isNavigating) return // Prevent multiple clicks
+    if (isNavigating || isLoading) return // Prevent multiple clicks and wait for auth check
 
     console.log("Start earning button clicked")
     setIsNavigating(true)
 
-    // Simple, direct navigation without fallbacks or delays
-    router.push("/auth/signup")
+    // Check authentication state and route accordingly
+    if (isAuthenticated) {
+      console.log("User is authenticated, redirecting to dashboard")
+      router.push("/dashboard")
+    } else {
+      console.log("User is not authenticated, redirecting to signup")
+      router.push("/auth/signup")
+    }
   }
 
   const handleImageError = () => {
@@ -224,9 +232,9 @@ export default function WelcomeScreen() {
             <GradientButton
               onClick={handleGetStarted}
               className="w-full py-6 text-xl font-semibold rounded-full"
-              disabled={isNavigating}
+              disabled={isNavigating || isLoading}
             >
-              {isNavigating ? "Loading..." : "Start earning"}
+              {isNavigating ? "Loading..." : isLoading ? "Checking..." : "Start earning"}
             </GradientButton>
           </div>
 

@@ -106,7 +106,7 @@ interface UserStats {
 }
 
 export default function Dashboard() {
-  const { user, loading } = useAuth()
+  const { user, isLoading, hasAttemptedAuth, sessionId } = useAuth()
   const router = useRouter()
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [stats, setStats] = useState<UserStats>({
@@ -118,7 +118,7 @@ export default function Dashboard() {
     totalPaidOut: 0,
     pendingPayout: 0,
   })
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingData, setIsLoadingData] = useState(true)
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
   const [expandedFeedbacks, setExpandedFeedbacks] = useState<Set<string>>(new Set())
   const [paymentDetails, setPaymentDetails] = useState({ upiId: "", mobileNumber: "" })
@@ -128,10 +128,11 @@ export default function Dashboard() {
   const [isProfileComplete, setIsProfileComplete] = useState<boolean>(false) // Default to false to show nudge
 
   useEffect(() => {
-    if (!loading && !user) {
+    // Only redirect if we've attempted auth, there's no session ID, and no user
+    if (hasAttemptedAuth && !sessionId && !user) {
       router.push("/auth/login")
     }
-  }, [user, loading, router])
+  }, [user, hasAttemptedAuth, sessionId, router])
 
   useEffect(() => {
     if (user) {
@@ -262,7 +263,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error("Error fetching feedbacks:", error)
     } finally {
-      setIsLoading(false)
+      setIsLoadingData(false)
     }
   }
 
@@ -403,7 +404,7 @@ export default function Dashboard() {
     }
   }
 
-  if (loading || isLoading) {
+  if (isLoading || isLoadingData) {
     return (
       <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center bg-[#F5EFE6]">
         <div className="w-full max-w-md mx-auto h-full flex flex-col relative">

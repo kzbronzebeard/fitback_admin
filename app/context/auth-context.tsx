@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState, useRef } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import Cookies from "js-cookie"
 
 interface User {
@@ -18,21 +18,10 @@ interface AuthContextType {
   sessionId: string | null
   isLoading: boolean
   isAuthenticated: boolean
+  hasAttemptedAuth: boolean
   login: (sessionId: string, userData: User) => void
   logout: () => void
   extendUserSession: () => Promise<void>
-}
-
-// Define window augmentation for TypeScript
-declare global {
-  interface Window {
-    __FITBACK_AUTH_STATE__?: {
-      user: User | null
-      sessionId: string | null
-      isInitialized: boolean
-      lastCheck: number
-    }
-  }
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -45,83 +34,19 @@ const COOKIE_OPTIONS = {
   sameSite: "lax" as const,
 }
 
-// Initialize global state on window object (client-side only)
-const initGlobalState = () => {
-  if (typeof window !== "undefined") {
-    window.__FITBACK_AUTH_STATE__ = window.__FITBACK_AUTH_STATE__ || {
-      user: null,
-      sessionId: null,
-      isInitialized: false,
-      lastCheck: 0,
-    }
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   console.log("[AUTH DEBUG] AuthProvider initializing")
 
-  // Initialize global state
-  initGlobalState()
-
-  // Use ref to track initialization
-  const initRef = useRef(false)
-
-  // Get initial state from window object or defaults
-  const getInitialState = () => {
-    if (typeof window !== "undefined" && window.__FITBACK_AUTH_STATE__?.isInitialized) {
-      return {
-        user: window.__FITBACK_AUTH_STATE__.user,
-        sessionId: window.__FITBACK_AUTH_STATE__.sessionId,
-        isLoading: false,
-      }
-    }
-    return { user: null, sessionId: null, isLoading: true }
-  }
-
-  const initialState = getInitialState()
-  const [user, setUser] = useState<User | null>(initialState.user)
-  const [sessionId, setSessionId] = useState<string | null>(initialState.sessionId)
-  const [isLoading, setIsLoading] = useState(initialState.isLoading)
+  const [user, setUser] = useState<User | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [hasAttemptedAuth, setHasAttemptedAuth] = useState(false)
   const [lastExtensionTime, setLastExtensionTime] = useState<number | null>(null)
 
-  // Check for existing session on mount, but only if needed
+  // Check for existing session on mount
   useEffect(() => {
-    if (initRef.current) return
-    initRef.current = true
-
-    const globalState = typeof window !== "undefined" ? window.__FITBACK_AUTH_STATE__ : null
-
-    // Skip check if we have recent data (less than 5 minutes old)
-    const FIVE_MINUTES = 5 * 60 * 1000
-    const shouldSkipCheck = globalState?.isInitialized && Date.now() - (globalState?.lastCheck || 0) < FIVE_MINUTES
-
-    if (shouldSkipCheck) {
-      console.log("[AUTH DEBUG] Using cached auth state (< 5min), skipping session check")
-      return
-    }
-
     checkExistingSession()
   }, [])
-
-  // Extend session on activity
-  useEffect(() => {
-    if (sessionId) {
-      const handleActivity = () => {
-        extendUserSession()
-      }
-
-      // Listen for user activity
-      window.addEventListener("click", handleActivity)
-      window.addEventListener("keydown", handleActivity)
-      window.addEventListener("scroll", handleActivity)
-
-      return () => {
-        window.removeEventListener("click", handleActivity)
-        window.removeEventListener("keydown", handleActivity)
-        window.removeEventListener("scroll", handleActivity)
-      }
-    }
-  }, [sessionId])
 
   const checkExistingSession = async () => {
     console.log("[AUTH DEBUG] checkExistingSession started, isLoading:", true)
@@ -137,14 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!sessionId) {
         setIsLoading(false)
-        if (typeof window !== "undefined") {
-          window.__FITBACK_AUTH_STATE__ = {
-            user: null,
-            sessionId: null,
-            isInitialized: true,
-            lastCheck: Date.now(),
-          }
-        }
+        setHasAttemptedAuth(true)
         return
       }
 
@@ -175,37 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
 
       if (result.success && result.user) {
-        // Update local state
         setUser(result.user)
         setSessionId(sessionId)
-
-        // Update global state
-        if (typeof window !== "undefined") {
-          window.__FITBACK_AUTH_STATE__ = {
-            user: result.user,
-            sessionId: sessionId,
-            isInitialized: true,
-            lastCheck: Date.now(),
-          }
-        }
-
         console.log("[AUTH CONTEXT] Session restored for user:", result.user.email)
       } else {
         // Invalid session, clear storage
         Cookies.remove("fitback_session_id")
         localStorage.removeItem("fitback_session_id")
         localStorage.removeItem("fitback_last_extension")
-
-        // Update global state
-        if (typeof window !== "undefined") {
-          window.__FITBACK_AUTH_STATE__ = {
-            user: null,
-            sessionId: null,
-            isInitialized: true,
-            lastCheck: Date.now(),
-          }
-        }
-
         console.log("[AUTH CONTEXT] Invalid session cleared")
       }
     } catch (error) {
@@ -213,19 +108,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       Cookies.remove("fitback_session_id")
       localStorage.removeItem("fitback_session_id")
       localStorage.removeItem("fitback_last_extension")
-
-      // Update global state on error
-      if (typeof window !== "undefined") {
-        window.__FITBACK_AUTH_STATE__ = {
-          user: null,
-          sessionId: null,
-          isInitialized: true,
-          lastCheck: Date.now(),
-        }
-      }
     } finally {
       console.log("[AUTH DEBUG] checkExistingSession completed, setting isLoading to false")
       setIsLoading(false)
+      setHasAttemptedAuth(true)
     }
   }
 
@@ -233,20 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log("[AUTH DEBUG] Login called for user:", userData.email)
     console.log("[AUTH CONTEXT] Logging in user:", userData.email)
     const userWithSession = { ...userData, sessionId: newSessionId }
-
-    // Update local state
     setUser(userWithSession)
     setSessionId(newSessionId)
-
-    // Update global state
-    if (typeof window !== "undefined") {
-      window.__FITBACK_AUTH_STATE__ = {
-        user: userWithSession,
-        sessionId: newSessionId,
-        isInitialized: true,
-        lastCheck: Date.now(),
-      }
-    }
+    setHasAttemptedAuth(true)
 
     // Set in both cookie and localStorage
     Cookies.set("fitback_session_id", newSessionId, COOKIE_OPTIONS)
@@ -269,20 +144,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Update local state
     setUser(null)
     setSessionId(null)
     setLastExtensionTime(null)
-
-    // Update global state
-    if (typeof window !== "undefined") {
-      window.__FITBACK_AUTH_STATE__ = {
-        user: null,
-        sessionId: null,
-        isInitialized: true,
-        lastCheck: Date.now(),
-      }
-    }
+    setHasAttemptedAuth(true)
 
     // Clear both cookie and localStorage
     Cookies.remove("fitback_session_id")
@@ -335,6 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionId,
     isLoading,
     isAuthenticated: !!user && !!sessionId,
+    hasAttemptedAuth,
     login,
     logout,
     extendUserSession,
@@ -350,8 +216,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       "isAuthenticated:",
       !!user && !!sessionId,
+      "hasAttemptedAuth:",
+      hasAttemptedAuth,
     )
-  }, [user, sessionId, isLoading])
+  }, [user, sessionId, isLoading, hasAttemptedAuth])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
