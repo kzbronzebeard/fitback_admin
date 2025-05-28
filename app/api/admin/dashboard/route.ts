@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { validateSession } from "../../../utils/session-manager"
 
 // Initialize Supabase client with service role key
 const supabaseUrl = process.env.SUPABASE_URL!
@@ -10,33 +10,24 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 // Admin email whitelist
 const ADMIN_EMAILS = ["p10khanazka@iima.ac.in", "team@tashion.ai"]
 
-async function validateAdminAccess() {
+async function validateAdminAccess(request: NextRequest) {
   try {
-    // Get session from cookies
-    const cookieStore = cookies()
-    const sessionId = cookieStore.get("fitback_session_id")?.value
+    // Get session from cookie or header
+    const sessionId = request.cookies.get("fitback_session_id")?.value || request.headers.get("x-session-id")
 
     if (!sessionId) {
       return { isValid: false, error: "No session found" }
     }
 
-    // Get user from session
-    const { data: session } = await supabase
-      .from("user_sessions")
-      .select(`
-        user_id,
-        users!inner(email, is_blocked)
-      `)
-      .eq("session_id", sessionId)
-      .eq("is_active", true)
-      .single()
+    // Validate session using existing session manager
+    const sessionResult = await validateSession(sessionId)
 
-    if (!session || !session.users) {
+    if (!sessionResult.isValid || !sessionResult.user) {
       return { isValid: false, error: "Invalid session" }
     }
 
-    const userEmail = session.users.email
-    const isBlocked = session.users.is_blocked
+    const userEmail = sessionResult.user.email
+    const isBlocked = sessionResult.user.is_blocked
 
     if (isBlocked) {
       return { isValid: false, error: "User is blocked" }
@@ -46,17 +37,17 @@ async function validateAdminAccess() {
       return { isValid: false, error: "Admin access required" }
     }
 
-    return { isValid: true, user: session.users }
+    return { isValid: true, user: sessionResult.user, userId: sessionResult.user.user_id }
   } catch (error) {
     console.error("[ADMIN AUTH] Error:", error)
     return { isValid: false, error: "Authentication failed" }
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     // Validate admin access
-    const authResult = await validateAdminAccess()
+    const authResult = await validateAdminAccess(request)
     if (!authResult.isValid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 })
     }

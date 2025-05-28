@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
+import Cookies from "js-cookie"
 
 interface User {
   user_id: string
@@ -9,7 +10,7 @@ interface User {
   name: string
   is_admin: boolean
   email_verified: boolean
-  sessionId?: string // Add sessionId to user object
+  sessionId?: string
 }
 
 interface AuthContextType {
@@ -23,6 +24,14 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+// Cookie configuration
+const COOKIE_OPTIONS = {
+  expires: 30, // 30 days
+  path: "/",
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict" as const,
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -57,41 +66,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkExistingSession = async () => {
     try {
+      // Get session from both cookie and localStorage for backward compatibility
+      const cookieSessionId = Cookies.get("fitback_session_id")
       const storedSessionId = localStorage.getItem("fitback_session_id")
-      const storedLastExtension = localStorage.getItem("fitback_last_extension")
 
-      if (!storedSessionId) {
+      // Prefer cookie, fall back to localStorage
+      const sessionId = cookieSessionId || storedSessionId
+
+      if (!sessionId) {
         setIsLoading(false)
         return
       }
 
-      // Restore last extension time
+      // If session was in localStorage but not in cookie, set it in cookie
+      if (storedSessionId && !cookieSessionId) {
+        Cookies.set("fitback_session_id", storedSessionId, COOKIE_OPTIONS)
+      }
+
+      const storedLastExtension = localStorage.getItem("fitback_last_extension")
       if (storedLastExtension) {
         setLastExtensionTime(Number.parseInt(storedLastExtension))
       }
 
-      console.log("[AUTH CONTEXT] Checking existing session:", storedSessionId)
+      console.log("[AUTH CONTEXT] Checking existing session:", sessionId)
 
       const response = await fetch("/api/auth/validate-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: storedSessionId }),
+        body: JSON.stringify({ sessionId }),
       })
 
       const result = await response.json()
 
       if (result.success && result.user) {
         setUser(result.user)
-        setSessionId(storedSessionId)
+        setSessionId(sessionId)
         console.log("[AUTH CONTEXT] Session restored for user:", result.user.email)
       } else {
         // Invalid session, clear storage
+        Cookies.remove("fitback_session_id")
         localStorage.removeItem("fitback_session_id")
         localStorage.removeItem("fitback_last_extension")
         console.log("[AUTH CONTEXT] Invalid session cleared")
       }
     } catch (error) {
       console.error("[AUTH CONTEXT] Error checking session:", error)
+      Cookies.remove("fitback_session_id")
       localStorage.removeItem("fitback_session_id")
       localStorage.removeItem("fitback_last_extension")
     } finally {
@@ -99,12 +119,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Update the login function to store sessionId in user object
   const login = (newSessionId: string, userData: User) => {
     console.log("[AUTH CONTEXT] Logging in user:", userData.email)
     const userWithSession = { ...userData, sessionId: newSessionId }
     setUser(userWithSession)
     setSessionId(newSessionId)
+
+    // Set in both cookie and localStorage
+    Cookies.set("fitback_session_id", newSessionId, COOKIE_OPTIONS)
     localStorage.setItem("fitback_session_id", newSessionId)
   }
 
@@ -126,6 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setSessionId(null)
     setLastExtensionTime(null)
+
+    // Clear both cookie and localStorage
+    Cookies.remove("fitback_session_id")
     localStorage.removeItem("fitback_session_id")
     localStorage.removeItem("fitback_last_extension")
 

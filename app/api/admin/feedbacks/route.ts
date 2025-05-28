@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { validateSession } from "../../../utils/session-manager"
 
 // Initialize Supabase client with service role key
 const supabaseUrl = process.env.SUPABASE_URL!
@@ -12,41 +12,37 @@ const ADMIN_EMAILS = ["p10khanazka@iima.ac.in", "team@tashion.ai"]
 
 async function validateAdminAccess(request: NextRequest) {
   try {
-    // Get session from cookies
-    const cookieStore = cookies()
-    const sessionId = cookieStore.get("fitback_session_id")?.value
+    // Get session from cookie or header
+    const sessionId = request.cookies.get("fitback_session_id")?.value || request.headers.get("x-session-id")
 
     if (!sessionId) {
+      console.log("[ADMIN AUTH] No session found")
       return { isValid: false, error: "No session found" }
     }
 
-    // Get user from session
-    const { data: session } = await supabase
-      .from("user_sessions")
-      .select(`
-        user_id,
-        users!inner(email, is_blocked)
-      `)
-      .eq("session_id", sessionId)
-      .eq("is_active", true)
-      .single()
+    // Validate session using existing session manager
+    const sessionResult = await validateSession(sessionId)
 
-    if (!session || !session.users) {
+    if (!sessionResult.isValid || !sessionResult.user) {
+      console.log("[ADMIN AUTH] Invalid session")
       return { isValid: false, error: "Invalid session" }
     }
 
-    const userEmail = session.users.email
-    const isBlocked = session.users.is_blocked
+    const userEmail = sessionResult.user.email
+    const isBlocked = sessionResult.user.is_blocked
 
     if (isBlocked) {
+      console.log("[ADMIN AUTH] User is blocked:", userEmail)
       return { isValid: false, error: "User is blocked" }
     }
 
     if (!ADMIN_EMAILS.includes(userEmail.toLowerCase())) {
+      console.log("[ADMIN AUTH] Not an admin email:", userEmail)
       return { isValid: false, error: "Admin access required" }
     }
 
-    return { isValid: true, user: session.users, userId: session.user_id }
+    console.log("[ADMIN AUTH] Admin access granted for:", userEmail)
+    return { isValid: true, user: sessionResult.user, userId: sessionResult.user.user_id }
   } catch (error) {
     console.error("[ADMIN AUTH] Error:", error)
     return { isValid: false, error: "Authentication failed" }
@@ -69,12 +65,12 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit
 
-    // Build query for feedbacks with user details
+    // Build query for feedbacks with user details - use LEFT JOIN instead of INNER JOIN
     let query = supabase
       .from("feedbacks")
       .select(`
         *,
-        users!inner(
+        users(
           user_id,
           name,
           email,
