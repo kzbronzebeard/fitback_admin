@@ -8,16 +8,7 @@ import { GradientButton } from "@/components/ui/gradient-button"
 import { resendVerificationEmail, verifyEmail } from "../../actions/auth"
 import { AuthLayout } from "../components/auth-layout"
 import { Mail, CheckCircle, RefreshCw, Edit3 } from "lucide-react"
-
-// Import auth context safely
-let useAuth: any
-try {
-  const authModule = require("../../context/new-auth-context")
-  useAuth = authModule.useAuth
-} catch (error) {
-  console.warn("Auth context not available:", error)
-  useAuth = () => ({ login: () => {} })
-}
+import { useAuth } from "../../context/auth-context"
 
 export default function VerifyEmailPage() {
   const router = useRouter()
