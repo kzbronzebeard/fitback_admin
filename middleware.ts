@@ -60,7 +60,12 @@ export async function middleware(request: NextRequest) {
 
       if (!sessionResult.isValid || !sessionResult.user) {
         console.log(`[MIDDLEWARE] Invalid session, redirecting to login`)
-        return NextResponse.redirect(new URL("/auth/login", request.url))
+
+        // Add a query parameter to indicate this is a middleware redirect
+        // This helps prevent race conditions with client-side auth
+        const loginUrl = new URL("/auth/login", request.url)
+        loginUrl.searchParams.set("middleware_redirect", "true")
+        return NextResponse.redirect(loginUrl)
       }
 
       // For admin routes, check if user is admin
