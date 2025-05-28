@@ -25,12 +25,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Cookie configuration
+// Cookie configuration - Fixed SameSite setting
 const COOKIE_OPTIONS = {
   expires: 30, // 30 days
   path: "/",
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
+  sameSite: "lax" as const, // Changed from "strict" to "lax" to fix refresh redirect issue
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
