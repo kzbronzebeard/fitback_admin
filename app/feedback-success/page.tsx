@@ -37,6 +37,27 @@ const allStyles = `
     mix-blend-mode: overlay;
     pointer-events: none;
   }
+  
+  @keyframes successPulse {
+    0% { transform: scale(0.95); opacity: 0; }
+    50% { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  
+  @keyframes checkmarkDraw {
+    0% { stroke-dashoffset: 100; }
+    100% { stroke-dashoffset: 0; }
+  }
+  
+  .success-animation {
+    animation: successPulse 0.6s ease-out forwards;
+  }
+  
+  .checkmark-path {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: checkmarkDraw 0.8s ease-in-out 0.2s forwards;
+  }
 `
 
 export default function FeedbackSuccess() {
@@ -66,8 +87,21 @@ export default function FeedbackSuccess() {
             overflow: "hidden",
           }}
         >
-          <div className="text-center">
-            <h1 className="text-3xl font-bold font-serif mb-2">Success!</h1>
+          <div className="text-center success-animation" style={{ opacity: 0 }}>
+            <div className="flex justify-center mb-2">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" opacity="0.6" />
+                <path
+                  d="M8 12L11 15L16 9"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="checkmark-path"
+                />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold font-serif mb-1">Success!</h1>
             <p className="text-sm opacity-90">Your feedback has been submitted</p>
           </div>
         </div>
@@ -84,37 +118,26 @@ export default function FeedbackSuccess() {
         >
           {/* Success Message */}
           <div className={`text-center mb-8 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
-            <div className="bg-white rounded-3xl p-8 shadow-[0_4px_14px_rgba(0,0,0,0.08)] mb-6">
-              <div className="text-6xl mb-4">🎉</div>
-              <h2 className="text-2xl font-bold text-[#1D1A2F] mb-4 font-serif">Feedback Submitted!</h2>
-              <p className="text-gray-600 mb-6">
-                Thank you for sharing your try-on experience. Your feedback helps others make better shopping decisions.
+            <div className="bg-white rounded-3xl p-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)] mb-6">
+              <p className="text-gray-600 mb-4">
+                Thank you for sharing your try-on experience. Your feedback helps improve online shopping.
               </p>
 
-              {/* Status Cards */}
-              <div className="space-y-4 mb-6">
-                <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3">
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                  <div className="text-left">
-                    <h3 className="font-semibold text-green-800">Video Uploaded</h3>
-                    <p className="text-sm text-green-600">Your try-on video has been successfully uploaded</p>
-                  </div>
+              {/* Simplified Status */}
+              <div className="flex justify-between mb-6 px-2">
+                <div className="text-center">
+                  <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-1" />
+                  <p className="text-xs text-gray-600">Video Uploaded</p>
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 flex items-center gap-3">
-                  <Clock className="w-6 h-6 text-yellow-600" />
-                  <div className="text-left">
-                    <h3 className="font-semibold text-yellow-800">Under Review</h3>
-                    <p className="text-sm text-yellow-600">Our team will review your feedback within 24 hours</p>
-                  </div>
+                <div className="text-center">
+                  <Clock className="w-6 h-6 text-yellow-600 mx-auto mb-1" />
+                  <p className="text-xs text-gray-600">24h Review</p>
                 </div>
 
-                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 flex items-center gap-3">
-                  <DollarSign className="w-6 h-6 text-purple-600" />
-                  <div className="text-left">
-                    <h3 className="font-semibold text-purple-800">₹50 Cashback</h3>
-                    <p className="text-sm text-purple-600">You'll receive your reward after approval</p>
-                  </div>
+                <div className="text-center">
+                  <DollarSign className="w-6 h-6 text-purple-600 mx-auto mb-1" />
+                  <p className="text-xs text-gray-600">₹50 Reward</p>
                 </div>
               </div>
 

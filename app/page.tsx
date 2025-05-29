@@ -25,6 +25,7 @@ const allStyles = `
       rgba(255, 255, 255, 0) 60%
     );
     pointer-events: none;
+    animation: sheenMove 4.3s ease-in-out infinite;
   }
 
   .satin-header::after {
@@ -39,6 +40,38 @@ const allStyles = `
     mix-blend-mode: overlay;
     pointer-events: none;
   }
+
+@keyframes cardLift {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes sheenMove {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.card-animate-1 {
+  animation: cardLift 1.5s ease-in-out forwards;
+  animation-delay: 2s;
+}
+
+.card-animate-2 {
+  animation: cardLift 1.5s ease-in-out forwards;
+  animation-delay: 2.5s;
+}
+
+.card-animate-3 {
+  animation: cardLift 1.5s ease-in-out forwards;
+  animation-delay: 3s;
+}
+
+.card-animate-4 {
+  animation: cardLift 1.5s ease-in-out forwards;
+  animation-delay: 3.5s;
+}
 `
 
 export default function WelcomeScreen() {
@@ -136,74 +169,106 @@ export default function WelcomeScreen() {
             boxShadow: "0 8px 20px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.08)",
             marginTop: "-5%",
             marginBottom: "1rem",
+            paddingBottom: "140px", // Add space for sticky CTA card
           }}
         >
-          {/* Headline */}
-          <div className={`mt-4 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
-            <h2 className="text-[#1D1A2F] text-4xl font-serif leading-tight">
-              Try on clothes.
-              <br />
-              Earn real money.
-            </h2>
-          </div>
-
-          {/* Illustration */}
-          <div
-            className={`mt-2 mb-2 relative flex justify-center ${isLoaded ? "opacity-100 transform transition-all duration-700 ease-out" : "opacity-0"}`}
-          >
-            <div className="relative w-full" style={{ maxWidth: "400px" }}>
-              {!imageError && imageUrl ? (
-                <Image
-                  key={currentImageIndex}
-                  src={imageUrl || "/placeholder.svg"}
-                  alt="Person taking a mirror selfie"
-                  width={600}
-                  height={450}
-                  quality={100}
-                  className="w-full h-auto object-contain"
-                  style={{ maxHeight: "180px" }}
-                  priority
-                  onError={handleImageError}
-                  onLoad={() => console.log("Image loaded successfully:", imageUrl)}
-                />
-              ) : (
-                <div className="w-full h-44 bg-gradient-to-br from-[#F5EFE6] via-[#F0E6D6] to-[#F5EFE6] rounded-2xl flex items-center justify-center border-2 border-[#4A2B6B]/20 shadow-lg">
-                  <div className="text-center text-[#4A2B6B]">
-                    <div className="text-7xl mb-3">👗</div>
-                    <p className="text-lg font-semibold text-[#4A2B6B]">Fashion Selfie</p>
-                    <p className="text-sm mt-2 text-[#1D1A2F]/70 max-w-48">
-                      Try on clothes & earn money for your feedback
-                    </p>
+          {/* Hero Section - Merged Headline and Image */}
+          <div className={`mt-4 relative ${isLoaded ? "opacity-100" : "opacity-0"}`}>
+            <div className="relative flex items-center min-h-[200px] overflow-hidden rounded-2xl">
+              {/* Image on the right */}
+              <div className="absolute right-0 top-0 bottom-0 w-3/5 flex items-center justify-center">
+                {!imageError && imageUrl ? (
+                  <Image
+                    key={currentImageIndex}
+                    src={imageUrl || "/placeholder.svg"}
+                    alt="Person taking a mirror selfie"
+                    width={1092}
+                    height={819}
+                    quality={100}
+                    className="w-full h-auto object-contain opacity-30"
+                    style={{ maxHeight: "200px" }}
+                    priority
+                    onError={handleImageError}
+                    onLoad={() => console.log("Image loaded successfully:", imageUrl)}
+                  />
+                ) : (
+                  <div className="w-full h-44 bg-gradient-to-br from-[#F5EFE6] via-[#F0E6D6] to-[#F5EFE6] rounded-2xl flex items-center justify-center border-2 border-[#4A2B6B]/20 shadow-lg opacity-30">
+                    <div className="text-center text-[#4A2B6B]">
+                      <div className="text-7xl mb-3">👗</div>
+                      <p className="text-lg font-semibold text-[#4A2B6B]">Fashion Selfie</p>
+                      <p className="text-sm mt-2 text-[#1D1A2F]/70 max-w-48">
+                        Try on clothes & earn money for your feedback
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Text overlay on the left */}
+              <div className="relative z-10 w-full pr-4">
+                <h2 className="text-[#1D1A2F] text-3xl font-serif leading-tight font-bold">
+                  Record your fit.
+                  <br />
+                  Earn real money.
+                  <br />
+                  Fix online fashion.
+                </h2>
+              </div>
             </div>
           </div>
 
           {/* How it works - Compact Version */}
-          <div className={`mt-2 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
+          <div className={`mt-6 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
             <h3 className="text-[#1D1A2F] text-xl font-bold mb-3 px-1 font-serif">How it works</h3>
 
             {/* Compact 3-step layout */}
             <div className="space-y-2">
               {/* Step 1 */}
-              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] card-animate-1">
                 <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B] font-semibold text-sm">
-                    1
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B]">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m22 8-6 4 6 4V8Z" />
+                      <rect width="14" height="12" x="2" y="6" rx="2" ry="2" />
+                    </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-base font-medium text-[#1D1A2F] leading-tight">Record a short try-on video</p>
-                    <p className="text-xs text-gray-600 mt-1">Record yourself trying on clothes you bought online</p>
+                    <p className="text-base font-medium text-[#1D1A2F] leading-tight">
+                      Record a short video about your outfit
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">Talk about how it fits & material. Show poses.</p>
                   </div>
                 </div>
               </div>
 
               {/* Step 2 */}
-              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] card-animate-2">
                 <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B] font-semibold text-sm">
-                    2
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B]">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12,6 12,12 16,14" />
+                    </svg>
                   </div>
                   <div className="flex-1">
                     <p className="text-base font-medium text-[#1D1A2F] leading-tight">Wait 24 hours for approval</p>
@@ -213,10 +278,24 @@ export default function WelcomeScreen() {
               </div>
 
               {/* Step 3 */}
-              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] card-animate-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B] font-semibold text-sm">
-                    3
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B]">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M6 3h12l4 6-10 13L2 9l4-6Z" />
+                      <path d="M11 3 8 9l4 13 4-13-3-6" />
+                      <path d="M2 9h20" />
+                    </svg>
                   </div>
                   <div className="flex-1">
                     <p className="text-base font-medium text-[#1D1A2F] leading-tight">Get ₹50 cashback per video</p>
@@ -224,27 +303,95 @@ export default function WelcomeScreen() {
                   </div>
                 </div>
               </div>
+
+              {/* Step 4 */}
+              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] card-animate-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B]">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
+                      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-base font-medium text-[#1D1A2F] leading-tight">
+                      Your data trains AI fit prediction
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Encrypted recordings are anonymized to predict how any fashion fits any person
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* CTA Button */}
-          <div className={`mt-4 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
-            <GradientButton
-              onClick={handleGetStarted}
-              className="w-full py-6 text-xl font-semibold rounded-full"
-              disabled={isNavigating || isLoading}
-            >
-              {isNavigating ? "Loading..." : isLoading ? "Checking..." : "Start earning"}
-            </GradientButton>
+          {/* Privacy Section */}
+          <div className={`mt-8 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
+            <h3 className="text-[#1D1A2F] text-xl font-bold mb-3 px-1 font-serif">Your Privacy, Our Priority.</h3>
+
+            <div className="flex items-center gap-4">
+              {/* Lock Image on the left */}
+              <div className="flex-shrink-0 w-20 h-auto flex items-center justify-center self-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-gray-300 via-gray-400 to-gray-500 rounded-lg flex items-center justify-center shadow-md">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Content on the right */}
+              <div className="flex-1">
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4A2B6B] mt-2 flex-shrink-0"></div>
+                    <p className="text-sm text-gray-700">Bank-grade encryption ensures your data is secure.</p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4A2B6B] mt-2 flex-shrink-0"></div>
+                    <p className="text-sm text-gray-700">
+                      You have full control over your submissions - Delete your data anytime
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4A2B6B] mt-2 flex-shrink-0"></div>
+                    <p className="text-sm text-gray-700">
+                      Your data is never sold or used without your explicit consent
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4A2B6B] mt-2 flex-shrink-0"></div>
+                    <p className="text-sm text-gray-700">Your data is never shared with other users</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Security note */}
-          <div
-            className={`mt-4 flex justify-center items-center gap-1 text-[#6B7280] ${isLoaded ? "opacity-100" : "opacity-0"}`}
-          >
-            <Shield size={16} />
-            <p className="text-sm">Bank-grade encryption</p>
-          </div>
           {/* FAQ Section */}
           <div className={`mt-8 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
             <h3 className="text-[#1D1A2F] text-xl font-bold mb-4 px-1 font-serif">Frequently Asked Questions</h3>
@@ -420,6 +567,29 @@ export default function WelcomeScreen() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky CTA Card */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 px-6 py-4">
+        <div className="w-full max-w-md mx-auto">
+          <div
+            className={`bg-white rounded-2xl p-4 shadow-[0_8px_24px_rgba(0,0,0,0.12)] ${isLoaded ? "opacity-100" : "opacity-0"}`}
+          >
+            <GradientButton
+              onClick={handleGetStarted}
+              className="w-full py-6 text-xl font-semibold rounded-full mb-3"
+              disabled={isNavigating || isLoading}
+            >
+              {isNavigating ? "Loading..." : isLoading ? "Checking..." : "Start earning"}
+            </GradientButton>
+
+            {/* Security note */}
+            <div className="flex justify-center items-center gap-1 text-[#6B7280]">
+              <Shield size={16} />
+              <p className="text-sm">Bank-grade encryption</p>
             </div>
           </div>
         </div>

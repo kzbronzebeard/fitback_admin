@@ -125,22 +125,26 @@ export async function compressVideo(videoBlob: Blob, onProgress?: (progress: num
 
     // Add audio track from original video if available
     try {
-      const audioContext = new AudioContext()
-      const audioSource = audioContext.createMediaElementSource(video)
-      const audioDestination = audioContext.createMediaStreamDestination()
-      audioSource.connect(audioDestination)
+      // Create a stream from the video element to get audio tracks
+      const videoElementStream = video.captureStream()
+      const audioTracks = videoElementStream.getAudioTracks()
 
-      // Add audio track to the stream
-      audioDestination.stream.getAudioTracks().forEach((track) => {
-        stream.addTrack(track)
-      })
+      if (audioTracks.length > 0) {
+        // Add original audio tracks to the canvas stream
+        audioTracks.forEach((track) => {
+          stream.addTrack(track)
+        })
+        console.log(`Added ${audioTracks.length} audio track(s) to compressed video`)
+      } else {
+        console.warn("No audio tracks found in original video")
+      }
     } catch (audioError) {
       console.warn("Could not add audio track:", audioError)
     }
 
     // Configure MediaRecorder with compression options
     const options = {
-      mimeType: "video/webm;codecs=vp8",
+      mimeType: "video/webm;codecs=vp8,opus",
       videoBitsPerSecond: settings.bitrate,
     }
 
@@ -150,8 +154,8 @@ export async function compressVideo(videoBlob: Blob, onProgress?: (progress: num
       mediaRecorder = new MediaRecorder(stream, options)
     } else {
       // Fallback to default options
-      mediaRecorder = new MediaRecorder(stream)
       console.warn("Advanced compression options not supported by this browser")
+      mediaRecorder = new MediaRecorder(stream)
     }
 
     const chunks: Blob[] = []

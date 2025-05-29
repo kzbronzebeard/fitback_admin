@@ -102,6 +102,19 @@ const recordingTips = [
   "Record for at least 10 seconds, maximum 60 seconds",
 ]
 
+const fashionFacts = [
+  "The zipper was invented in 1893 but wasn't widely used in fashion until the 1930s!",
+  "Coco Chanel popularized the 'little black dress' in 1926, calling it 'Chanel's Ford'.",
+  "The average person owns 148 pieces of clothing but only wears 20% regularly.",
+  "Denim was originally created for gold miners during the California Gold Rush.",
+  "The fashion industry is the second most polluting industry in the world after oil.",
+  "High heels were originally worn by men in the 10th century for horse riding.",
+  "The color purple was once so expensive that only royalty could afford it.",
+  "Fast fashion brands produce 52 collections per year - that's one new collection per week!",
+  "The first fashion magazine was published in Germany in 1586.",
+  "Polyester takes 200+ years to decompose, making sustainable fashion crucial.",
+]
+
 type KeptStatus = "kept" | "returned" | "want_to_return"
 
 interface FeedbackForm {
@@ -156,6 +169,8 @@ export default function SubmitFeedback() {
 
   const [currentStep, setCurrentStep] = useState(1)
 
+  const [currentFactIndex, setCurrentFactIndex] = useState(0)
+
   // Timer for recording
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -192,6 +207,16 @@ export default function SubmitFeedback() {
 
     checkMobile()
   }, [])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isCompressing) {
+      interval = setInterval(() => {
+        setCurrentFactIndex((prev) => (prev + 1) % fashionFacts.length)
+      }, 3000) // Change fact every 3 seconds
+    }
+    return () => clearInterval(interval)
+  }, [isCompressing])
 
   const toggleGuideline = (index: number) => {
     setExpandedGuidelines((prev) => {
@@ -555,9 +580,7 @@ export default function SubmitFeedback() {
               {/* Compact Recording Guide */}
               <div className="bg-white rounded-3xl p-4 mb-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
                 <h2 className="text-lg font-bold text-[#1D1A2F] mb-3 font-serif">📖 Recording Guidelines</h2>
-                <p className="text-xs text-gray-600 mb-3">
-                  Include all these elements in your video for the best review:
-                </p>
+                <p className="text-xs text-gray-600 mb-3">Include these elements in your video to get Rs 50!</p>
 
                 <div className="space-y-2">
                   {guideSteps.map((step, index) => {
@@ -733,45 +756,6 @@ export default function SubmitFeedback() {
                   <div className="col-span-2">
                     <label className="block text-sm font-semibold text-[#4A2B6B] mb-3">⭐ How does it fit? *</label>
 
-                    {/* Fit Score Images */}
-                    <div className="grid grid-cols-5 gap-2 mb-4">
-                      {[1, 2, 3, 4, 5].map((score) => (
-                        <div key={score} className="text-center">
-                          <div
-                            className={`relative rounded-lg overflow-hidden border-2 transition-all ${
-                              formData.fitScore === score
-                                ? "border-[#4A2B6B] ring-2 ring-[#4A2B6B] ring-opacity-30"
-                                : "border-gray-200"
-                            }`}
-                          >
-                            <img
-                              src={`/images/fit-score-${score}.jpg`}
-                              alt={`Fit score ${score}`}
-                              className="w-full h-20 object-cover"
-                            />
-                            {formData.fitScore === score && (
-                              <div className="absolute inset-0 bg-[#4A2B6B] bg-opacity-20 flex items-center justify-center">
-                                <div className="w-6 h-6 bg-[#4A2B6B] rounded-full flex items-center justify-center">
-                                  <span className="text-white text-xs font-bold">✓</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs mt-1 font-medium text-gray-600">
-                            {score === 1
-                              ? "Too Tight"
-                              : score === 2
-                                ? "Tight"
-                                : score === 3
-                                  ? "Perfect"
-                                  : score === 4
-                                    ? "Loose"
-                                    : "Too Loose"}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-
                     {/* Slider */}
                     <div className="relative">
                       <input
@@ -789,11 +773,11 @@ export default function SubmitFeedback() {
                         }}
                       />
                       <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>1</span>
-                        <span>2</span>
-                        <span>3</span>
-                        <span>4</span>
-                        <span>5</span>
+                        <span>Too Tight</span>
+                        <span>Tight</span>
+                        <span>Perfect</span>
+                        <span>Loose</span>
+                        <span>Too Loose</span>
                       </div>
                     </div>
 
@@ -861,16 +845,25 @@ export default function SubmitFeedback() {
 
                   {/* Progress Indicators */}
                   {isCompressing && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <div className="flex justify-between text-sm mb-2">
-                        <span className="font-medium text-blue-800">Compressing video...</span>
-                        <span className="text-blue-600">{compressionProgress}%</span>
-                      </div>
-                      <div className="w-full bg-blue-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${compressionProgress}%` }}
-                        ></div>
+                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
+                      <div className="text-center">
+                        <div className="mb-4">
+                          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mb-3">
+                            <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                          <h3 className="text-lg font-semibold text-purple-800 mb-2">Compressing your video...</h3>
+                          <p className="text-sm text-purple-600">This may take a moment</p>
+                        </div>
+
+                        <div className="bg-white rounded-lg p-4 shadow-sm">
+                          <div className="flex items-center mb-2">
+                            <span className="text-2xl mr-2">💡</span>
+                            <span className="text-sm font-medium text-gray-700">Fashion Fact:</span>
+                          </div>
+                          <p className="text-sm text-gray-600 leading-relaxed animate-pulse">
+                            {fashionFacts[currentFactIndex]}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
