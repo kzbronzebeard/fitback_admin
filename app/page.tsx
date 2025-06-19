@@ -244,7 +244,7 @@ export default function WelcomeScreen() {
                   </div>
                   <div className="flex-1">
                     <p className="text-base font-medium text-[#1D1A2F] leading-tight">
-                      Record a 1-min video wearing your outfit
+                      Record a short video about your outfit
                     </p>
                     <p className="text-xs text-gray-600 mt-1">Talk about how it fits & material. Show poses.</p>
                   </div>

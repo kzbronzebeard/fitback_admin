@@ -161,10 +161,10 @@ export default function Dashboard() {
   }, [feedbacks])
 
   const fetchUserProfile = async () => {
-    if (!user?.user_id) return
+    if (!user?.id) return
 
     try {
-      const result = await getUserProfile(user.user_id)
+      const result = await getUserProfile(user.id)
       if (result.success && result.data) {
         setPaymentDetails({
           upiId: result.data.upiId || "",
@@ -269,18 +269,11 @@ export default function Dashboard() {
 
   const handleSavePaymentDetails = async () => {
     console.log("🔧 DEBUG: Save button clicked")
-    console.log("1. Save clicked, user.user_id:", user?.user_id)
+    console.log("1. Save clicked, user.id:", user?.id)
     console.log("2. Current paymentDetails state:", paymentDetails)
     console.log("3. Current isEditingPayment state:", isEditingPayment)
 
-    // Add this new logging to see the full user object structure
-    console.log("🔍 FULL USER OBJECT:", user)
-    console.log("🔍 USER PROPERTIES:", user ? Object.keys(user) : "user is null/undefined")
-    console.log("🔍 USER.USER_ID:", user?.user_id)
-    console.log("🔍 USER.USERS_ID:", user?.users_id)
-    console.log("🔍 USER.ID:", user?.id)
-
-    if (!user?.user_id) return
+    if (!user?.id) return
 
     setPaymentLoading(true)
     try {
@@ -295,7 +288,7 @@ export default function Dashboard() {
       })
 
       // Allow saving even if only one field is filled or both are empty
-      const result = await updateUserProfile(user.user_id, {
+      const result = await updateUserProfile(user.id, {
         upiId: cleanUpiId || undefined,
         mobileNumber: cleanMobileNumber || undefined,
       })
