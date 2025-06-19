@@ -4,17 +4,45 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, FileText, Clock, CheckCircle } from "lucide-react"
+import { Users, FileText, Clock, TrendingUp, UserPlus } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/app/context/auth-context"
 import { useRouter } from "next/navigation"
 
+interface DashboardData {
+  users: {
+    total: number
+    last24h: number
+    last7days: number
+  }
+  feedbacks: {
+    total: number
+    pending: number
+    last24h: {
+      total: number
+      pending: number
+      approved: number
+      rejected: number
+      rewarded: number
+    }
+    last7days: {
+      total: number
+      pending: number
+      approved: number
+      rejected: number
+      rewarded: number
+    }
+  }
+  systemStatus: string
+}
+
 export default function AdminDashboard() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
-  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [accessDenied, setAccessDenied] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   // Admin email whitelist
   const ADMIN_EMAILS = ["p10khanazka@iima.ac.in", "team@tashion.ai", "chhekur@gmail.com"]
@@ -49,13 +77,31 @@ export default function AdminDashboard() {
   const fetchDashboardData = async () => {
     try {
       setIsLoadingData(true)
-      // For now, just set some mock data
-      setDashboardData({
-        users: { total: 123, recent: 12 },
-        feedbacks: { total: 456, pending: 78 },
+
+      // Get session ID from localStorage
+      const sessionId = localStorage.getItem("fitback_session_id")
+
+      // Fetch real data from API
+      const response = await fetch("/api/admin/dashboard", {
+        headers: {
+          "x-session-id": sessionId || "",
+        },
       })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.success && result.data) {
+        setDashboardData(result.data)
+        setLastUpdated(new Date())
+      } else {
+        console.error("[ADMIN DASHBOARD] API returned error:", result.error)
+      }
     } catch (error) {
-      console.error("Error fetching dashboard data:", error)
+      console.error("[ADMIN DASHBOARD] Error fetching dashboard data:", error)
     } finally {
       setIsLoadingData(false)
     }
@@ -121,7 +167,18 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{dashboardData?.users?.total || 0}</div>
-            <p className="text-sm text-gray-500">+{dashboardData?.users?.recent || 0} this week</p>
+            <p className="text-sm text-gray-500">+{dashboardData?.users?.last7days || 0} this week</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">New Users (24h)</CardTitle>
+            <UserPlus className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dashboardData?.users?.last24h || 0}</div>
+            <p className="text-sm text-gray-500">Last 24 hours</p>
           </CardContent>
         </Card>
 
@@ -146,17 +203,6 @@ export default function AdminDashboard() {
             <p className="text-sm text-gray-500">Awaiting approval</p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">System Status</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">Online</div>
-            <p className="text-sm text-gray-500">All systems operational</p>
-          </CardContent>
-        </Card>
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
@@ -174,9 +220,14 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <p className="text-sm">• New user registrations: {dashboardData?.users?.recent || 0}</p>
+                <p className="text-sm">• New user registrations (24h): {dashboardData?.users?.last24h || 0}</p>
+                <p className="text-sm">• New user registrations (7 days): {dashboardData?.users?.last7days || 0}</p>
                 <p className="text-sm">• Pending feedback reviews: {dashboardData?.feedbacks?.pending || 0}</p>
-                <p className="text-sm">• System uptime: 99.9%</p>
+                <p className="text-sm">• Recent feedbacks (24h): {dashboardData?.feedbacks?.last24h?.total || 0}</p>
+                <p className="text-sm">• System status: {dashboardData?.systemStatus || "Unknown"}</p>
+                {lastUpdated && (
+                  <p className="text-xs text-gray-400 mt-4">Last updated: {lastUpdated.toLocaleTimeString()}</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -189,7 +240,49 @@ export default function AdminDashboard() {
               <CardDescription>Key metrics and insights</CardDescription>
             </CardHeader>
             <CardContent>
-              <p>Analytics dashboard coming soon...</p>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium mb-2">User Growth</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-3 rounded-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-500">Last 24 hours</span>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                      </div>
+                      <p className="text-xl font-bold">{dashboardData?.users?.last24h || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-500">Last 7 days</span>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                      </div>
+                      <p className="text-xl font-bold">{dashboardData?.users?.last7days || 0}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Feedback Activity (Last 7 days)</h3>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="bg-gray-50 p-3 rounded-md">
+                      <p className="text-sm text-gray-500">Total</p>
+                      <p className="text-xl font-bold">{dashboardData?.feedbacks?.last7days?.total || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-md">
+                      <p className="text-sm text-gray-500">Pending</p>
+                      <p className="text-xl font-bold">{dashboardData?.feedbacks?.last7days?.pending || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-md">
+                      <p className="text-sm text-gray-500">Approved</p>
+                      <p className="text-xl font-bold">{dashboardData?.feedbacks?.last7days?.approved || 0}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-md">
+                      <p className="text-sm text-gray-500">Rejected</p>
+                      <p className="text-xl font-bold">{dashboardData?.feedbacks?.last7days?.rejected || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

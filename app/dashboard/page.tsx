@@ -93,6 +93,7 @@ interface Feedback {
   created_at: string
   updated_at?: string
   admin_message?: string
+  cashbackAmount: number
 }
 
 interface UserStats {
@@ -161,10 +162,10 @@ export default function Dashboard() {
   }, [feedbacks])
 
   const fetchUserProfile = async () => {
-    if (!user?.id) return
+    if (!user?.user_id) return
 
     try {
-      const result = await getUserProfile(user.id)
+      const result = await getUserProfile(user.user_id)
       if (result.success && result.data) {
         setPaymentDetails({
           upiId: result.data.upiId || "",
@@ -244,7 +245,7 @@ export default function Dashboard() {
         const rejectedFeedbacks = feedbackList.filter((f: Feedback) => f.status === "rejected").length
         const totalEarnings = feedbackList
           .filter((f: Feedback) => f.status === "approved" || f.status === "rewarded")
-          .reduce((sum: number, f: Feedback) => sum + f.cashback_amount, 0)
+          .reduce((sum: number, f: Feedback) => sum + f.cashbackAmount, 0)
 
         // For now, assume no payouts have been made (this would come from a payouts table)
         const totalPaidOut = 0
@@ -269,11 +270,18 @@ export default function Dashboard() {
 
   const handleSavePaymentDetails = async () => {
     console.log("🔧 DEBUG: Save button clicked")
-    console.log("1. Save clicked, user.id:", user?.id)
+    console.log("1. Save clicked, user.user_id:", user?.user_id)
     console.log("2. Current paymentDetails state:", paymentDetails)
     console.log("3. Current isEditingPayment state:", isEditingPayment)
 
-    if (!user?.id) return
+    // Add this new logging to see the full user object structure
+    console.log("🔍 FULL USER OBJECT:", user)
+    console.log("🔍 USER PROPERTIES:", user ? Object.keys(user) : "user is null/undefined")
+    console.log("🔍 USER.USER_ID:", user?.user_id)
+    console.log("🔍 USER.USERS_ID:", user?.users_id)
+    console.log("🔍 USER.ID:", user?.id)
+
+    if (!user?.user_id) return
 
     setPaymentLoading(true)
     try {
@@ -288,7 +296,7 @@ export default function Dashboard() {
       })
 
       // Allow saving even if only one field is filled or both are empty
-      const result = await updateUserProfile(user.id, {
+      const result = await updateUserProfile(user.user_id, {
         upiId: cleanUpiId || undefined,
         mobileNumber: cleanMobileNumber || undefined,
       })

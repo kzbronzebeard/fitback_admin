@@ -224,9 +224,35 @@ export default function WelcomeScreen() {
             {/* Compact 3-step layout */}
             <div className="space-y-2">
               {/* Step 1 */}
-              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] card-animate-1">
+              <div className="bg-white rounded-2xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] card-animate-1 relative">
+                {/* Small tooltip bubble */}
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-[#4A2B6B] text-white text-xs px-2 py-1 rounded-lg shadow-lg whitespace-nowrap z-10">
+                  <div className="flex items-center gap-1">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    No face needed!
+                  </div>
+                  {/* Arrow pointing down */}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-[#4A2B6B]"></div>
+                </div>
+
                 <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B]">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E8F3E8] flex items-center justify-center text-[#4A2B6B] relative">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="16"
@@ -244,7 +270,7 @@ export default function WelcomeScreen() {
                   </div>
                   <div className="flex-1">
                     <p className="text-base font-medium text-[#1D1A2F] leading-tight">
-                      Record a short video about your outfit
+                      Record a 1-min video wearing your outfit
                     </p>
                     <p className="text-xs text-gray-600 mt-1">Talk about how it fits & material. Show poses.</p>
                   </div>

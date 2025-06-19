@@ -8,7 +8,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Admin email whitelist
-const ADMIN_EMAILS = ["p10khanazka@iima.ac.in", "team@tashion.ai"]
+const ADMIN_EMAILS = ["p10khanazka@iima.ac.in", "team@tashion.ai", "chhekur@gmail.com"]
 
 async function validateAdminAccess(request: NextRequest) {
   try {
@@ -56,23 +56,37 @@ export async function GET(request: NextRequest) {
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-    // Get user registration stats
+    // Get total user count
+    const { count: totalUsers } = await supabase.from("users").select("*", { count: "exact", head: true })
+
+    // Get user registration stats for last 24h
     const { data: users24h } = await supabase
       .from("users")
       .select("user_id")
       .gte("created_at", twentyFourHoursAgo.toISOString())
 
+    // Get user registration stats for last 7 days
     const { data: users1week } = await supabase
       .from("users")
       .select("user_id")
       .gte("created_at", oneWeekAgo.toISOString())
 
-    // Get feedback stats
+    // Get total feedback count
+    const { count: totalFeedbacks } = await supabase.from("feedbacks").select("*", { count: "exact", head: true })
+
+    // Get pending feedback count
+    const { count: pendingFeedbacks } = await supabase
+      .from("feedbacks")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending")
+
+    // Get feedback stats for last 24h
     const { data: feedbacks24h } = await supabase
       .from("feedbacks")
       .select("feedback_id, status")
       .gte("created_at", twentyFourHoursAgo.toISOString())
 
+    // Get feedback stats for last 7 days
     const { data: feedbacks1week } = await supabase
       .from("feedbacks")
       .select("feedback_id, status")
@@ -83,31 +97,37 @@ export async function GET(request: NextRequest) {
       pending: feedbacks24h?.filter((f) => f.status === "pending").length || 0,
       approved: feedbacks24h?.filter((f) => f.status === "approved").length || 0,
       rejected: feedbacks24h?.filter((f) => f.status === "rejected").length || 0,
+      rewarded: feedbacks24h?.filter((f) => f.status === "rewarded").length || 0,
     }
 
     const feedback1weekBreakdown = {
       pending: feedbacks1week?.filter((f) => f.status === "pending").length || 0,
       approved: feedbacks1week?.filter((f) => f.status === "approved").length || 0,
       rejected: feedbacks1week?.filter((f) => f.status === "rejected").length || 0,
+      rewarded: feedbacks1week?.filter((f) => f.status === "rewarded").length || 0,
     }
 
     return NextResponse.json({
       success: true,
       data: {
         users: {
+          total: totalUsers || 0,
           last24h: users24h?.length || 0,
-          lastWeek: users1week?.length || 0,
+          last7days: users1week?.length || 0,
         },
         feedbacks: {
+          total: totalFeedbacks || 0,
+          pending: pendingFeedbacks || 0,
           last24h: {
             total: feedbacks24h?.length || 0,
             ...feedback24hBreakdown,
           },
-          lastWeek: {
+          last7days: {
             total: feedbacks1week?.length || 0,
             ...feedback1weekBreakdown,
           },
         },
+        systemStatus: "operational",
       },
     })
   } catch (error) {

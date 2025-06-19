@@ -8,6 +8,46 @@ const supabaseUrl = process.env.SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Helper function to get existing user_id by auth_user_id
+async function getExistingUserId(authUserId: string): Promise<string | null> {
+  try {
+    // First check the users table
+    const { data: userData } = await supabase
+      .from("users")
+      .select("user_id")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle()
+
+    if (userData?.user_id) {
+      console.log("[USER PROFILE] Found existing user_id in users table:", userData.user_id)
+      return userData.user_id
+    }
+
+    // If not found in users table, check other related tables
+    // This helps recover user_id from related data if the profile was deleted
+
+    // Check feedbacks table
+    const { data: feedbackData } = await supabase
+      .from("feedbacks")
+      .select("user_id")
+      .eq("auth_user_id", authUserId)
+      .limit(1)
+      .maybeSingle()
+
+    if (feedbackData?.user_id) {
+      console.log("[USER PROFILE] Recovered user_id from feedbacks table:", feedbackData.user_id)
+      return feedbackData.user_id
+    }
+
+    // Add more tables to check if needed (wallet, transactions, etc.)
+
+    return null
+  } catch (error) {
+    console.error("[USER PROFILE] Error getting existing user_id:", error)
+    return null
+  }
+}
+
 // Get user profile by auth user ID
 export async function getUserProfile(
   authUserId: string,
@@ -60,8 +100,17 @@ export async function updateUserProfile(
   try {
     console.log("[USER PROFILE] Updating profile for auth user:", authUserId)
 
+    // Get existing user_id if profile exists
+    const existingUserId = await getExistingUserId(authUserId)
+
     const updateData: any = {
+      auth_user_id: authUserId,
       updated_at: new Date().toISOString(),
+    }
+
+    // Preserve existing user_id if profile exists
+    if (existingUserId) {
+      updateData.user_id = existingUserId
     }
 
     // Map the updates to database column names
@@ -82,12 +131,25 @@ export async function updateUserProfile(
       updateData.profile_completed = true
     }
 
-    const { data, error } = await supabase
-      .from("users")
-      .update(updateData)
-      .eq("auth_user_id", authUserId)
-      .select()
-      .single()
+    // If we have an existing user_id, use upsert to ensure we update the existing record
+    // or create a new one with the same user_id if it was deleted
+    let result
+    if (existingUserId) {
+      result = await supabase
+        .from("users")
+        .upsert(updateData, {
+          onConflict: "auth_user_id",
+          ignoreDuplicates: false,
+        })
+        .select()
+        .single()
+    } else {
+      // If no existing user_id, do a regular update
+      // This will fail if no record exists, which is the desired behavior
+      result = await supabase.from("users").update(updateData).eq("auth_user_id", authUserId).select().single()
+    }
+
+    const { data, error } = result
 
     if (error) {
       console.error("[USER PROFILE] Update error:", error)
@@ -155,11 +217,20 @@ export async function createUserProfile(
   try {
     console.log("[USER PROFILE] Creating profile for auth user:", authUserId)
 
+    // Get existing user_id if profile exists or existed before
+    const existingUserId = await getExistingUserId(authUserId)
+
     const insertData: any = {
       auth_user_id: authUserId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       profile_completed: true,
+    }
+
+    // Preserve existing user_id if profile exists or existed before
+    if (existingUserId) {
+      insertData.user_id = existingUserId
+      console.log("[USER PROFILE] Using existing user_id for profile creation:", existingUserId)
     }
 
     // Map the profile data to database column names
@@ -176,7 +247,15 @@ export async function createUserProfile(
     if (profileData.paymentMethodStatus !== undefined)
       insertData.payment_method_status = profileData.paymentMethodStatus
 
-    const { data, error } = await supabase.from("users").insert(insertData).select().single()
+    // Use upsert instead of insert to handle the case where the profile might exist
+    const { data, error } = await supabase
+      .from("users")
+      .upsert(insertData, {
+        onConflict: "auth_user_id",
+        ignoreDuplicates: false,
+      })
+      .select()
+      .single()
 
     if (error) {
       console.error("[USER PROFILE] Create error:", error)
@@ -201,7 +280,7 @@ export async function createUserProfile(
       updatedAt: data.updated_at,
     }
 
-    console.log("[USER PROFILE] Profile created successfully")
+    console.log("[USER PROFILE] Profile created successfully with user_id:", data.user_id)
     return { success: true, data: userProfile }
   } catch (error) {
     console.error("[USER PROFILE] Error creating user profile:", error)
@@ -217,10 +296,19 @@ export async function upsertUserProfile(
   try {
     console.log("[USER PROFILE] Upserting profile for auth user:", authUserId)
 
+    // Get existing user_id if profile exists or existed before
+    const existingUserId = await getExistingUserId(authUserId)
+
     const upsertData: any = {
       auth_user_id: authUserId,
       updated_at: new Date().toISOString(),
       profile_completed: true,
+    }
+
+    // Preserve existing user_id if profile exists or existed before
+    if (existingUserId) {
+      upsertData.user_id = existingUserId
+      console.log("[USER PROFILE] Using existing user_id for profile upsert:", existingUserId)
     }
 
     // Map the profile data to database column names
@@ -238,7 +326,7 @@ export async function upsertUserProfile(
       upsertData.payment_method_status = profileData.paymentMethodStatus
 
     // Set created_at only for new records
-    if (!profileData.userId) {
+    if (!existingUserId) {
       upsertData.created_at = new Date().toISOString()
     }
 
@@ -274,7 +362,7 @@ export async function upsertUserProfile(
       updatedAt: data.updated_at,
     }
 
-    console.log("[USER PROFILE] Profile upserted successfully")
+    console.log("[USER PROFILE] Profile upserted successfully with user_id:", data.user_id)
     return { success: true, data: userProfile }
   } catch (error) {
     console.error("[USER PROFILE] Error upserting user profile:", error)
