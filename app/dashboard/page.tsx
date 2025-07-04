@@ -471,6 +471,32 @@ export default function Dashboard() {
               <h2 className="text-lg font-bold text-[#1D1A2F] font-serif">Summary</h2>
             </div>
 
+            {/* Unlimited Earnings Banner */}
+            <div className="bg-gradient-to-r from-[#4A2B6B]/20 to-[#7E5BEF]/20 rounded-3xl p-3 mb-6 text-[#4A2B6B] shadow-[0_2px_7px_rgba(0,0,0,0.04)] border border-[#4A2B6B]/10">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+                <h2 className="text-lg font-bold font-serif">Unlimited Earning Potential</h2>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-semibold mb-1">₹50 per approved video • No limits!</p>
+                <p className="text-sm opacity-80">
+                  Submit as many outfit videos as you want. The more quality feedback you provide, the more you earn.
+                </p>
+              </div>
+            </div>
+
             {/* Earnings Summary */}
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3">
@@ -601,7 +627,7 @@ export default function Dashboard() {
                 className="w-full py-3 text-base font-semibold rounded-full"
                 disabled={!isProfileComplete}
               >
-                📹 Submit New Feedback
+                📹 Submit Another Video (₹50 each!)
               </GradientButton>
               <button
                 onClick={scrollToFaq}
@@ -895,6 +921,48 @@ export default function Dashboard() {
             <h2 className="text-lg font-bold text-[#1D1A2F] mb-4 font-serif">Frequently Asked Questions</h2>
 
             <div className="space-y-3">
+              {/* FAQ Item 0 - Unlimited Submissions */}
+              <div className="bg-gray-50 rounded-2xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                <button
+                  className="w-full px-4 py-3 text-left flex justify-between items-center"
+                  onClick={() => setExpandedFaq(expandedFaq === 0 ? null : 0)}
+                >
+                  <span className="font-medium text-[#1D1A2F] flex items-center gap-2">
+                    <span className="text-[#7E5BEF]">🚀</span> Can I submit unlimited videos?
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`transition-transform ${expandedFaq === 0 ? "rotate-180" : ""}`}
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+
+                {expandedFaq === 0 && (
+                  <div className="px-4 pb-4 text-sm text-gray-600">
+                    <p className="mb-2">Yes! There are absolutely no limits on video submissions.</p>
+                    <ul className="list-disc pl-5 space-y-1 mb-2">
+                      <li>Submit as many outfit videos as you want</li>
+                      <li>Earn ₹50 for each approved video</li>
+                      <li>No daily, weekly, or monthly caps</li>
+                      <li>Different outfits, brands, sizes - all welcome!</li>
+                    </ul>
+                    <p>
+                      Focus on quality feedback with clear videos and detailed fit commentary for the best approval
+                      rates.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* FAQ Item 1 - Data Usage */}
               <div className="bg-gray-50 rounded-2xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
                 <button

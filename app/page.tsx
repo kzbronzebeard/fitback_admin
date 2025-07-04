@@ -53,6 +53,31 @@ const allStyles = `
   100% { transform: translateX(-100%); }
 }
 
+@keyframes bannerShimmer {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.banner-shimmer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.1) 30%,
+    rgba(255, 255, 255, 0.3) 40%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  pointer-events: none;
+  animation: bannerShimmer 3s ease-in-out infinite;
+}
+
 .card-animate-1 {
   animation: cardLift 1.5s ease-in-out forwards;
   animation-delay: 2s;
@@ -209,11 +234,34 @@ export default function WelcomeScreen() {
                 <h2 className="text-[#1D1A2F] text-3xl font-serif leading-tight font-bold">
                   Record your fit.
                   <br />
-                  Earn real money.
+                  Earn unlimited money.
                   <br />
                   Fix online fashion.
                 </h2>
               </div>
+            </div>
+          </div>
+
+          {/* Unlimited Earnings Banner */}
+          <div className={`mt-6 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
+            <div className="bg-gradient-to-r from-[#4A2B6B]/20 to-[#7E5BEF]/20 rounded-2xl p-2 text-[#4A2B6B] shadow-sm border border-[#4A2B6B]/10 relative overflow-hidden banner-shimmer">
+              <div className="flex items-center justify-center gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+                <h3 className="text-base font-bold">Unlimited Earning Potential</h3>
+              </div>
+              <p className="text-center text-xs opacity-80 mt-1">Submit as many videos as you want • No daily limits</p>
             </div>
           </div>
 
@@ -324,8 +372,10 @@ export default function WelcomeScreen() {
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-base font-medium text-[#1D1A2F] leading-tight">Get ₹50 cashback per video</p>
-                    <p className="text-xs text-gray-600 mt-1">Earn real money for each approved video submission</p>
+                    <p className="text-base font-medium text-[#1D1A2F] leading-tight">Get ₹50 per video - unlimited!</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      No daily limits. Submit as many videos as you want and earn more
+                    </p>
                   </div>
                 </div>
               </div>
@@ -540,14 +590,14 @@ export default function WelcomeScreen() {
                 )}
               </div>
 
-              {/* FAQ Item 4 - Contact Information */}
+              {/* FAQ Item 4 - Unlimited Submissions */}
               <div className="bg-white rounded-2xl overflow-hidden shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
                 <button
                   className="w-full px-4 py-3 text-left flex justify-between items-center"
                   onClick={() => setExpandedFaq(expandedFaq === 4 ? null : 4)}
                 >
                   <span className="font-medium text-[#1D1A2F] flex items-center gap-2">
-                    <span className="text-[#7E5BEF]">👋</span> Who can I talk to?
+                    <span className="text-[#7E5BEF]">🚀</span> Can I submit unlimited videos?
                   </span>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -566,6 +616,48 @@ export default function WelcomeScreen() {
                 </button>
 
                 {expandedFaq === 4 && (
+                  <div className="px-4 pb-4 text-sm text-gray-600">
+                    <p className="mb-2">Absolutely! There are no limits on how many videos you can submit.</p>
+                    <ul className="list-disc pl-5 space-y-1 mb-2">
+                      <li>Submit as many outfit videos as you want</li>
+                      <li>Earn ₹50 for each approved video</li>
+                      <li>No daily, weekly, or monthly caps</li>
+                      <li>The more you contribute, the more you earn!</li>
+                    </ul>
+                    <p>
+                      Quality matters more than quantity - focus on clear videos with detailed fit commentary for the
+                      best approval rates.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* FAQ Item 4 - Contact Information */}
+              <div className="bg-white rounded-2xl overflow-hidden shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
+                <button
+                  className="w-full px-4 py-3 text-left flex justify-between items-center"
+                  onClick={() => setExpandedFaq(expandedFaq === 5 ? null : 5)}
+                >
+                  <span className="font-medium text-[#1D1A2F] flex items-center gap-2">
+                    <span className="text-[#7E5BEF]">👋</span> Who can I talk to?
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`transition-transform ${expandedFaq === 5 ? "rotate-180" : ""}`}
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+
+                {expandedFaq === 5 && (
                   <div className="px-4 pb-4 text-sm text-gray-600">
                     <p className="mb-2">
                       Reach our founder, Khanaz, directly on LinkedIn{" "}
