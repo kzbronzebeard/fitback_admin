@@ -2,7 +2,6 @@
 
 import { createClient } from "@supabase/supabase-js"
 import { validateFeedbackInput, sanitizeInput } from "@/app/utils/validation"
-import { captureError, ErrorSeverity } from "@/app/utils/monitoring"
 import { validateSession } from "@/app/utils/session-manager"
 
 // CRITICAL: Admin approval workflow - feedback starts as "pending", cashback only awarded after admin approval
@@ -130,7 +129,7 @@ export async function createFeedbackRecord(
       console.log("Using existing user with ID:", userIdToUse)
     }
 
-    // Create the feedback record with status = 'pending' (cashback will be added when approved)
+    // Create the feedback record with status = 'pending' (using existing constraint-compliant value)
     console.log("Creating feedback record...")
     const feedbackData = {
       user_id: userIdToUse,
@@ -139,7 +138,7 @@ export async function createFeedbackRecord(
       size: sanitizedSize,
       fit_score: fitScore,
       kept_status: keptStatus,
-      status: "pending", // Set to pending - cashback only added when approved
+      status: "pending", // Use existing constraint-compliant status
       cashback_amount: 50.0, // Default cashback amount
       created_at: new Date().toISOString(),
     }
@@ -166,117 +165,6 @@ export async function createFeedbackRecord(
       success: false,
       error: (error as Error).message,
     }
-  }
-}
-
-// Function to ensure a bucket exists
-async function ensureBucketExists(bucketName: string): Promise<void> {
-  try {
-    // Check if bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets()
-    const bucketExists = buckets?.some((bucket) => bucket.name === bucketName)
-
-    // If bucket doesn't exist, create it
-    if (!bucketExists) {
-      const { error } = await supabase.storage.createBucket(bucketName, {
-        public: false, // Set to false for security
-        fileSizeLimit: 50 * 1024 * 1024, // 50MB limit
-      })
-
-      if (error) throw error
-      console.log(`Created bucket: ${bucketName}`)
-    }
-  } catch (error) {
-    console.error(`Error ensuring bucket exists: ${error}`)
-    captureError(error as Error, {
-      action: "ensureBucketExists",
-      additionalData: { bucketName },
-    })
-    throw error
-  }
-}
-
-// Function to upload video to Supabase Storage
-export async function uploadVideoToStorage(
-  sessionId: string,
-  videoBlob: Blob,
-  feedbackId: string,
-): Promise<{ success: boolean; path?: string; error?: string }> {
-  try {
-    // Validate session and get user
-    const sessionResult = await validateSession(sessionId)
-    if (!sessionResult.isValid || !sessionResult.user) {
-      throw new Error("User not authenticated")
-    }
-
-    const userId = sessionResult.user.user_id
-
-    // Validate inputs
-    if (!videoBlob || !(videoBlob instanceof Blob)) {
-      throw new Error("Invalid video data provided")
-    }
-
-    if (!feedbackId) {
-      throw new Error("User ID and feedback ID are required")
-    }
-
-    // Check file size (max 50MB)
-    const maxSize = 50 * 1024 * 1024
-    if (videoBlob.size > maxSize) {
-      throw new Error(`Video size exceeds maximum allowed size of 50MB`)
-    }
-
-    // Ensure the videos bucket exists
-    await ensureBucketExists("videos")
-
-    const fileName = `${userId}/${feedbackId}/feedback-video.webm`
-
-    // Convert Blob to Buffer for server-side upload
-    const buffer = Buffer.from(await videoBlob.arrayBuffer())
-
-    const { data, error } = await supabase.storage.from("videos").upload(fileName, buffer, {
-      contentType: "video/webm",
-      upsert: true,
-    })
-
-    if (error) {
-      captureError(`Video upload error: ${error.message}`, {
-        action: "uploadVideoToStorage",
-        additionalData: { userId, feedbackId, fileSize: videoBlob.size },
-      })
-      throw error
-    }
-
-    // Update the videos table with the storage path
-    const { error: updateError } = await supabase.from("videos").insert({
-      feedback_id: feedbackId,
-      storage_path: data.path,
-      format: "webm",
-      created_at: new Date().toISOString(),
-    })
-
-    if (updateError) {
-      captureError(`Error updating videos table: ${updateError.message}`, {
-        action: "uploadVideoToStorage",
-        additionalData: { userId, feedbackId, path: data.path },
-      })
-      throw updateError
-    }
-
-    return { success: true, path: data.path }
-  } catch (error) {
-    console.error("Video upload error:", error)
-    const sessionResult = await validateSession(sessionId)
-    const userId = sessionResult.user?.user_id
-    captureError(
-      error as Error,
-      {
-        action: "uploadVideoToStorage",
-        additionalData: { userId, feedbackId, fileSize: videoBlob?.size },
-      },
-      ErrorSeverity.ERROR,
-    )
-    return { success: false, error: (error as Error).message }
   }
 }
 

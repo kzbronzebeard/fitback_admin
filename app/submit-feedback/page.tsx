@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/context/auth-context"
-import { createFeedbackRecord, uploadVideoToStorage } from "@/app/actions/feedback"
+import { createFeedbackRecord } from "@/app/actions/feedback"
 import { getSupabaseImageUrl } from "@/app/utils/helpers"
 import { compressVideo } from "@/app/utils/video-compressor"
 import { GradientButton } from "@/components/ui/gradient-button"
@@ -164,6 +164,7 @@ export default function SubmitFeedback() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isCompressing, setIsCompressing] = useState(false)
   const [compressionProgress, setCompressionProgress] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
 
   const [expandedGuidelines, setExpandedGuidelines] = useState<Set<number>>(new Set())
 
@@ -210,13 +211,13 @@ export default function SubmitFeedback() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout
-    if (isCompressing) {
+    if (isCompressing || isUploading) {
       interval = setInterval(() => {
         setCurrentFactIndex((prev) => (prev + 1) % fashionFacts.length)
       }, 3000) // Change fact every 3 seconds
     }
     return () => clearInterval(interval)
-  }, [isCompressing])
+  }, [isCompressing, isUploading])
 
   const toggleGuideline = (index: number) => {
     setExpandedGuidelines((prev) => {
@@ -440,7 +441,6 @@ export default function SubmitFeedback() {
       return
     }
 
-    // Check if user has sessionId
     if (!sessionId) {
       setSubmitError("Authentication error. Please log in again.")
       return
@@ -458,12 +458,11 @@ export default function SubmitFeedback() {
         setCompressionProgress(progress)
       })
 
-      setIsCompressing(false)
       console.log("Video compression completed")
 
-      // Step 2: Create feedback record - pass sessionId
+      // Step 2: Create feedback record with pending status
       const feedbackResult = await createFeedbackRecord(
-        sessionId, // Use sessionId from AuthContext
+        sessionId,
         formData.productUrl,
         formData.brand,
         formData.size,
@@ -475,12 +474,28 @@ export default function SubmitFeedback() {
         throw new Error(feedbackResult.error || "Failed to create feedback record")
       }
 
-      // Step 3: Upload video - pass sessionId
-      const uploadResult = await uploadVideoToStorage(sessionId, compressedVideo, feedbackResult.feedbackId)
+      setIsCompressing(false)
+      setIsUploading(true)
+      console.log("Feedback created, now uploading video...")
+
+      // Step 3: Upload video using FormData to dedicated API route
+      const uploadFormData = new FormData()
+      uploadFormData.append("video", compressedVideo, "feedback-video.webm")
+      uploadFormData.append("feedbackId", feedbackResult.feedbackId)
+      uploadFormData.append("sessionId", sessionId)
+
+      const uploadResponse = await fetch("/api/upload-video", {
+        method: "POST",
+        body: uploadFormData,
+      })
+
+      const uploadResult = await uploadResponse.json()
 
       if (!uploadResult.success) {
         throw new Error(uploadResult.error || "Failed to upload video")
       }
+
+      console.log("Video uploaded successfully:", uploadResult)
 
       // Success!
       router.push("/feedback-success")
@@ -490,6 +505,7 @@ export default function SubmitFeedback() {
     } finally {
       setIsSubmitting(false)
       setIsCompressing(false)
+      setIsUploading(false)
     }
   }
 
@@ -704,7 +720,6 @@ export default function SubmitFeedback() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* All the existing form fields remain the same */}
                   {/* Product URL */}
                   <div>
                     <label className="block text-sm font-semibold text-[#4A2B6B] mb-2">🔗 Product URL *</label>
@@ -800,37 +815,6 @@ export default function SubmitFeedback() {
                     {errors.fitScore && <p className="text-red-500 text-xs mt-1">{errors.fitScore}</p>}
                   </div>
 
-                  {/* Fit Score and Status */}
-                  {/* <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-[#4A2B6B] mb-2">⭐ Fit Score *</label>
-                      <select
-                        value={formData.fitScore}
-                        onChange={(e) => handleInputChange("fitScore", Number(e.target.value))}
-                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#4A2B6B] focus:outline-none text-sm"
-                      >
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
-                          <option key={score} value={score}>
-                            {score} - {score <= 3 ? "Poor" : score <= 6 ? "Average" : score <= 8 ? "Good" : "Excellent"}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-[#4A2B6B] mb-2">📦 Status *</label>
-                      <select
-                        value={formData.keptStatus}
-                        onChange={(e) => handleInputChange("keptStatus", e.target.value as KeptStatus)}
-                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#4A2B6B] focus:outline-none text-sm"
-                      >
-                        <option value="kept">✅ Kept</option>
-                        <option value="returned">↩️ Returned</option>
-                        <option value="want_to_return">🤔 Want to return</option>
-                      </select>
-                    </div>
-                  </div>
-
                   {/* Additional Comments */}
                   <div>
                     <label className="block text-sm font-semibold text-[#4A2B6B] mb-2">💭 Comments (Optional)</label>
@@ -844,14 +828,16 @@ export default function SubmitFeedback() {
                   </div>
 
                   {/* Progress Indicators */}
-                  {isCompressing && (
+                  {(isCompressing || isUploading) && (
                     <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
                       <div className="text-center">
                         <div className="mb-4">
                           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mb-3">
                             <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
                           </div>
-                          <h3 className="text-lg font-semibold text-purple-800 mb-2">Compressing your video...</h3>
+                          <h3 className="text-lg font-semibold text-purple-800 mb-2">
+                            {isCompressing ? "Compressing your video..." : "Uploading your video..."}
+                          </h3>
                           <p className="text-sm text-purple-600">This may take a moment</p>
                         </div>
 
@@ -879,10 +865,16 @@ export default function SubmitFeedback() {
                   <div className="pt-4">
                     <GradientButton
                       type="submit"
-                      disabled={isSubmitting || isCompressing || !recordedVideo}
+                      disabled={isSubmitting || isCompressing || isUploading || !recordedVideo}
                       className="w-full py-4 text-lg font-semibold rounded-full"
                     >
-                      {isSubmitting ? "🔄 Submitting..." : isCompressing ? "📹 Compressing..." : "💰 Submit & Earn ₹50"}
+                      {isSubmitting
+                        ? "🔄 Submitting..."
+                        : isCompressing
+                          ? "📹 Compressing..."
+                          : isUploading
+                            ? "⬆️ Uploading..."
+                            : "💰 Submit & Earn ₹50"}
                     </GradientButton>
 
                     <div className="mt-3 text-center text-xs text-gray-500">
