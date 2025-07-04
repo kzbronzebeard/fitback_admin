@@ -490,7 +490,6 @@ export default function Dashboard() {
                 <h2 className="text-lg font-bold font-serif">Unlimited Earning Potential</h2>
               </div>
               <div className="text-center">
-                <p className="text-base font-semibold mb-1">₹50 per approved video • No limits!</p>
                 <p className="text-sm opacity-80">
                   Submit as many outfit videos as you want. The more quality feedback you provide, the more you earn.
                 </p>
