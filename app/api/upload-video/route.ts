@@ -8,11 +8,25 @@ export async function POST(request: NextRequest) {
   try {
     console.log("Video upload API called")
 
-    // Get form data
-    const formData = await request.formData()
+    // Parse form data
+    let formData: FormData
+    try {
+      formData = await request.formData()
+    } catch (error) {
+      console.error("Error parsing form data:", error)
+      return NextResponse.json({ success: false, error: "Invalid form data" }, { status: 400 })
+    }
+
     const videoFile = formData.get("video") as File
     const feedbackId = formData.get("feedbackId") as string
     const sessionId = formData.get("sessionId") as string
+
+    console.log("Form data received:", {
+      hasVideo: !!videoFile,
+      videoSize: videoFile?.size,
+      feedbackId,
+      sessionId: sessionId ? "present" : "missing",
+    })
 
     if (!videoFile || !feedbackId || !sessionId) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 })
@@ -31,10 +45,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid file type" }, { status: 400 })
     }
 
-    // Check file size (50MB limit)
-    const maxSize = 50 * 1024 * 1024
+    // Check file size (100MB limit for uncompressed videos)
+    const maxSize = 100 * 1024 * 1024
     if (videoFile.size > maxSize) {
-      return NextResponse.json({ success: false, error: "File too large" }, { status: 400 })
+      return NextResponse.json({ success: false, error: "File too large (max 100MB)" }, { status: 400 })
     }
 
     console.log(`Uploading video: ${videoFile.size} bytes for feedback ${feedbackId}`)
@@ -89,9 +103,6 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("Video record created:", videoRecord)
-
-    // Note: We don't need to update the feedback record here since it's already created with "pending" status
-    // The video upload completion is tracked by the existence of a record in the videos table
     console.log("Video upload completed successfully - feedback remains in pending status for admin review")
 
     return NextResponse.json({

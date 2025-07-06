@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/context/auth-context"
 import { createFeedbackRecord } from "@/app/actions/feedback"
 import { getSupabaseImageUrl } from "@/app/utils/helpers"
-import { compressVideo } from "@/app/utils/video-compressor"
+// import { compressVideo } from "@/app/utils/video-compressor" // Removed import
 import { GradientButton } from "@/components/ui/gradient-button"
 
 // Add satin sheen effect
@@ -162,8 +162,8 @@ export default function SubmitFeedback() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isCompressing, setIsCompressing] = useState(false)
-  const [compressionProgress, setCompressionProgress] = useState(0)
+  // const [isCompressing, setIsCompressing] = useState(false) // Removed state
+  // const [compressionProgress, setCompressionProgress] = useState(0) // Removed state
   const [isUploading, setIsUploading] = useState(false)
 
   const [expandedGuidelines, setExpandedGuidelines] = useState<Set<number>>(new Set())
@@ -211,13 +211,14 @@ export default function SubmitFeedback() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout
-    if (isCompressing || isUploading) {
+    if (isUploading) {
+      // Updated condition
       interval = setInterval(() => {
         setCurrentFactIndex((prev) => (prev + 1) % fashionFacts.length)
       }, 3000) // Change fact every 3 seconds
     }
     return () => clearInterval(interval)
-  }, [isCompressing, isUploading])
+  }, [isUploading])
 
   const toggleGuideline = (index: number) => {
     setExpandedGuidelines((prev) => {
@@ -450,15 +451,19 @@ export default function SubmitFeedback() {
 
     try {
       // Step 1: Compress video
-      console.log("Starting video compression...")
-      setIsCompressing(true)
-      setCompressionProgress(0)
+      // console.log("Starting video compression...")
+      // setIsCompressing(true)
+      // setCompressionProgress(0)
 
-      const compressedVideo = await compressVideo(recordedVideo, (progress) => {
-        setCompressionProgress(progress)
-      })
+      // const compressedVideo = await compressVideo(recordedVideo, (progress) => {
+      //   setCompressionProgress(progress)
+      // })
 
-      console.log("Video compression completed")
+      // console.log("Video compression completed")
+
+      // Use original video without compression
+      console.log("Using original video without compression...")
+      const videoToUpload = recordedVideo
 
       // Step 2: Create feedback record with pending status
       const feedbackResult = await createFeedbackRecord(
@@ -474,13 +479,13 @@ export default function SubmitFeedback() {
         throw new Error(feedbackResult.error || "Failed to create feedback record")
       }
 
-      setIsCompressing(false)
+      // setIsCompressing(false)
       setIsUploading(true)
       console.log("Feedback created, now uploading video...")
 
       // Step 3: Upload video using FormData to dedicated API route
       const uploadFormData = new FormData()
-      uploadFormData.append("video", compressedVideo, "feedback-video.webm")
+      uploadFormData.append("video", videoToUpload, "feedback-video.webm") // Updated line
       uploadFormData.append("feedbackId", feedbackResult.feedbackId)
       uploadFormData.append("sessionId", sessionId)
 
@@ -504,7 +509,7 @@ export default function SubmitFeedback() {
       setSubmitError(error instanceof Error ? error.message : "Failed to submit feedback. Please try again.")
     } finally {
       setIsSubmitting(false)
-      setIsCompressing(false)
+      // setIsCompressing(false) // Removed line
       setIsUploading(false)
     }
   }
@@ -828,16 +833,14 @@ export default function SubmitFeedback() {
                   </div>
 
                   {/* Progress Indicators */}
-                  {(isCompressing || isUploading) && (
+                  {isUploading && (
                     <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
                       <div className="text-center">
                         <div className="mb-4">
                           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mb-3">
                             <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
                           </div>
-                          <h3 className="text-lg font-semibold text-purple-800 mb-2">
-                            {isCompressing ? "Compressing your video..." : "Uploading your video..."}
-                          </h3>
+                          <h3 className="text-lg font-semibold text-purple-800 mb-2">Uploading your video...</h3>
                           <p className="text-sm text-purple-600">This may take a moment</p>
                         </div>
 
@@ -865,16 +868,10 @@ export default function SubmitFeedback() {
                   <div className="pt-4">
                     <GradientButton
                       type="submit"
-                      disabled={isSubmitting || isCompressing || isUploading || !recordedVideo}
+                      disabled={isSubmitting || isUploading || !recordedVideo}
                       className="w-full py-4 text-lg font-semibold rounded-full"
                     >
-                      {isSubmitting
-                        ? "🔄 Submitting..."
-                        : isCompressing
-                          ? "📹 Compressing..."
-                          : isUploading
-                            ? "⬆️ Uploading..."
-                            : "💰 Submit & Earn ₹50"}
+                      {isSubmitting ? "🔄 Submitting..." : isUploading ? "⬆️ Uploading..." : "💰 Submit & Earn ₹50"}
                     </GradientButton>
 
                     <div className="mt-3 text-center text-xs text-gray-500">
