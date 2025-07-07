@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/context/auth-context"
 import { createFeedbackRecord } from "@/app/actions/feedback"
 import { getSupabaseImageUrl } from "@/app/utils/helpers"
-// import { compressVideo } from "@/app/utils/video-compressor" // Removed import
 import { GradientButton } from "@/components/ui/gradient-button"
 
 // Add satin sheen effect
@@ -61,6 +60,28 @@ const allStyles = `
     border: none;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
+
+  .tab-active {
+    background: #4A2B6B;
+    color: white;
+  }
+
+  .tab-inactive {
+    background: #F5EFE6;
+    color: #4A2B6B;
+    border: 2px solid #4A2B6B;
+  }
+
+  .file-drop-zone {
+    border: 2px dashed #4A2B6B;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+  }
+
+  .file-drop-zone.drag-over {
+    border-color: #6B46C1;
+    background-color: rgba(74, 43, 107, 0.05);
+  }
 `
 
 const guideSteps = [
@@ -94,14 +115,6 @@ const guideSteps = [
   },
 ]
 
-const recordingTips = [
-  "Show the garment from front, side, and back angles",
-  "Demonstrate how it fits around key areas (chest, waist, shoulders)",
-  "Speak clearly about the fit, comfort, and material quality",
-  "Keep the camera steady and ensure good lighting",
-  "Record for at least 10 seconds, maximum 60 seconds",
-]
-
 const fashionFacts = [
   "The zipper was invented in 1893 but wasn't widely used in fashion until the 1930s!",
   "Coco Chanel popularized the 'little black dress' in 1926, calling it 'Chanel's Ford'.",
@@ -116,12 +129,13 @@ const fashionFacts = [
 ]
 
 type KeptStatus = "kept" | "returned" | "want_to_return"
+type VideoSource = "record" | "upload"
 
 interface FeedbackForm {
   productUrl: string
   brand: string
   size: string
-  fitScore?: number // Make optional
+  fitScore?: number
   keptStatus: KeptStatus
   additionalComments: string
 }
@@ -130,11 +144,15 @@ export default function SubmitFeedback() {
   const { user, isAuthenticated, isLoading, sessionId } = useAuth()
   const router = useRouter()
 
+  // Video source selection
+  const [videoSource, setVideoSource] = useState<VideoSource>("record")
+
   // Video recording refs and states
   const videoRef = useRef<HTMLVideoElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Recording states
   const [isRecording, setIsRecording] = useState(false)
@@ -143,6 +161,12 @@ export default function SubmitFeedback() {
   const [recordingTime, setRecordingTime] = useState(0)
   const [showRecordingModal, setShowRecordingModal] = useState(false)
   const [cameraPermission, setCameraPermission] = useState<"granted" | "denied" | "prompt">("prompt")
+
+  // Upload states
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
 
   // Add after existing state declarations
   const [isMobile, setIsMobile] = useState(false)
@@ -171,6 +195,95 @@ export default function SubmitFeedback() {
   const [currentStep, setCurrentStep] = useState(1)
 
   const [currentFactIndex, setCurrentFactIndex] = useState(0)
+
+  // Get current video for submission
+  const getCurrentVideo = (): Blob | File | null => {
+    return videoSource === "record" ? recordedVideo : uploadedFile
+  }
+
+  const getCurrentVideoUrl = (): string | null => {
+    return videoSource === "record" ? recordedVideoUrl : uploadedVideoUrl
+  }
+
+  const getVideoDuration = (): number => {
+    return videoSource === "record" ? recordingTime : 0 // We'll implement duration detection for uploads later
+  }
+
+  // File validation
+  const validateVideoFile = (file: File): string | null => {
+    // Check file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024
+    if (file.size > maxSize) {
+      return "File size must be less than 50MB"
+    }
+
+    // Check file type
+    const allowedTypes = ["video/mp4", "video/webm", "video/quicktime", "video/mov", "video/avi"]
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      return "Please upload a video file (MP4, WebM, MOV, or AVI)"
+    }
+
+    return null
+  }
+
+  // File upload handlers
+  const handleFileSelect = (file: File) => {
+    setUploadError(null)
+
+    const validationError = validateVideoFile(file)
+    if (validationError) {
+      setUploadError(validationError)
+      return
+    }
+
+    setUploadedFile(file)
+    const url = URL.createObjectURL(file)
+    setUploadedVideoUrl(url)
+
+    // Clear any existing errors
+    if (errors.video) {
+      setErrors({ ...errors, video: "" })
+    }
+  }
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleFileSelect(file)
+    }
+  }
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    setIsDragOver(false)
+
+    const files = event.dataTransfer.files
+    if (files.length > 0) {
+      handleFileSelect(files[0])
+    }
+  }
+
+  const clearUploadedVideo = () => {
+    setUploadedFile(null)
+    if (uploadedVideoUrl) {
+      URL.revokeObjectURL(uploadedVideoUrl)
+      setUploadedVideoUrl(null)
+    }
+    setUploadError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
 
   // Timer for recording
   const stopRecording = useCallback(() => {
@@ -389,8 +502,9 @@ export default function SubmitFeedback() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    if (!recordedVideo) {
-      newErrors.video = "Please record a video showing the garment fit"
+    const currentVideo = getCurrentVideo()
+    if (!currentVideo) {
+      newErrors.video = "Please record or upload a video showing the garment fit"
     }
 
     if (!formData.productUrl.trim()) {
@@ -432,12 +546,13 @@ export default function SubmitFeedback() {
       return
     }
 
-    if (!recordedVideo) {
-      setSubmitError("Please record a video")
+    const currentVideo = getCurrentVideo()
+    if (!currentVideo) {
+      setSubmitError("Please record or upload a video")
       return
     }
 
-    if (recordingTime < 10) {
+    if (videoSource === "record" && recordingTime < 10) {
       setSubmitError("Video must be at least 10 seconds long")
       return
     }
@@ -450,22 +565,8 @@ export default function SubmitFeedback() {
     setIsSubmitting(true)
 
     try {
-      // Step 1: Compress video
-      // console.log("Starting video compression...")
-      // setIsCompressing(true)
-      // setCompressionProgress(0)
+      console.log(`Using ${videoSource} video for submission...`)
 
-      // const compressedVideo = await compressVideo(recordedVideo, (progress) => {
-      //   setCompressionProgress(progress)
-      // })
-
-      // console.log("Video compression completed")
-
-      // Use original video without compression
-      console.log("Using original video without compression...")
-      const videoToUpload = recordedVideo
-
-      // Step 2: Create feedback record with pending status
       const feedbackResult = await createFeedbackRecord(
         sessionId,
         formData.productUrl,
@@ -485,9 +586,10 @@ export default function SubmitFeedback() {
 
       // Step 3: Upload video using FormData to dedicated API route
       const uploadFormData = new FormData()
-      uploadFormData.append("video", videoToUpload, "feedback-video.webm") // Updated line
+      uploadFormData.append("video", currentVideo, videoSource === "record" ? "feedback-video.webm" : currentVideo.name) // Updated line
       uploadFormData.append("feedbackId", feedbackResult.feedbackId)
       uploadFormData.append("sessionId", sessionId)
+      uploadFormData.append("source", videoSource)
 
       const uploadResponse = await fetch("/api/upload-video", {
         method: "POST",
@@ -562,7 +664,7 @@ export default function SubmitFeedback() {
                 {currentStep > 1 ? "✓" : "1"}
               </div>
               <span className={`text-sm font-medium ${currentStep >= 1 ? "text-[#4A2B6B]" : "text-gray-500"}`}>
-                Record Video
+                Add Video
               </span>
             </div>
 
@@ -648,62 +750,172 @@ export default function SubmitFeedback() {
                 </div>
               </div>
 
-              {/* Video Recording Section */}
+              {/* Video Tab Selection */}
               <div className="bg-white rounded-3xl p-6 mb-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
-                <h2 className="text-xl font-bold text-[#1D1A2F] mb-4 font-serif">🎥 Record Your Video</h2>
+                <h2 className="text-xl font-bold text-[#1D1A2F] mb-4 font-serif">🎥 Add Your Video</h2>
 
-                {!recordedVideo ? (
-                  <div className="text-center">
-                    <div className="bg-[#E8F3E8] rounded-2xl p-8 mb-4">
-                      <div className="text-4xl mb-3">📹</div>
-                      <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Ready to record?</h3>
-                      <p className="text-gray-600 text-sm mb-4">Show us how the garment fits</p>
-                      <GradientButton
-                        onClick={openRecordingModal}
-                        className="px-6 py-3 text-base font-semibold rounded-full"
-                      >
-                        🎬 Start Recording
-                      </GradientButton>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    <div className="bg-[#E8F3E8] rounded-xl p-4 mb-4">
-                      <div className="text-3xl mb-2">✅</div>
-                      <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Recorded!</h3>
-                      <p className="text-gray-600 text-sm mb-4">Duration: {formatTime(recordingTime)}</p>
+                {/* Tab Buttons */}
+                <div className="flex rounded-xl overflow-hidden mb-6 border-2 border-[#4A2B6B]">
+                  <button
+                    onClick={() => setVideoSource("record")}
+                    className={`flex-1 py-3 px-4 text-sm font-semibold transition-colors ${
+                      videoSource === "record" ? "tab-active" : "tab-inactive"
+                    }`}
+                  >
+                    📹 Record Video
+                  </button>
+                  <button
+                    onClick={() => setVideoSource("upload")}
+                    className={`flex-1 py-3 px-4 text-sm font-semibold transition-colors ${
+                      videoSource === "upload" ? "tab-active" : "tab-inactive"
+                    }`}
+                  >
+                    📁 Upload Video
+                  </button>
+                </div>
 
-                      {recordedVideoUrl && (
-                        <video
-                          src={recordedVideoUrl}
-                          controls
-                          className="w-full max-w-xs mx-auto rounded-lg shadow-lg mb-4"
-                          style={{
-                            maxHeight: "200px",
-                          }}
-                        />
-                      )}
-
-                      <div className="space-y-3">
-                        <button
-                          onClick={retakeVideo}
-                          className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors mr-3"
-                        >
-                          🔄 Retake Video
-                        </button>
-
-                        <div className="mt-4">
+                {/* Video Content Based on Selected Tab */}
+                {videoSource === "record" ? (
+                  // Recording Interface
+                  <>
+                    {!recordedVideo ? (
+                      <div className="text-center">
+                        <div className="bg-[#E8F3E8] rounded-2xl p-8 mb-4">
+                          <div className="text-4xl mb-3">📹</div>
+                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Ready to record?</h3>
+                          <p className="text-gray-600 text-sm mb-4">Show us how the garment fits</p>
                           <GradientButton
-                            onClick={() => setCurrentStep(2)}
-                            className="w-full py-4 text-lg font-semibold rounded-full"
+                            onClick={openRecordingModal}
+                            className="px-6 py-3 text-base font-semibold rounded-full"
                           >
-                            💰 Go to last step for ₹50
+                            🎬 Start Recording
                           </GradientButton>
-                          <p className="text-xs text-gray-500 mt-2 text-center">You are almost there! 🎉</p>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                    ) : (
+                      <div className="text-center">
+                        <div className="bg-[#E8F3E8] rounded-xl p-4 mb-4">
+                          <div className="text-3xl mb-2">✅</div>
+                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Recorded!</h3>
+                          <p className="text-gray-600 text-sm mb-4">Duration: {formatTime(recordingTime)}</p>
+
+                          {recordedVideoUrl && (
+                            <video
+                              src={recordedVideoUrl}
+                              controls
+                              className="w-full max-w-xs mx-auto rounded-lg shadow-lg mb-4"
+                              style={{
+                                maxHeight: "200px",
+                              }}
+                            />
+                          )}
+
+                          <div className="space-y-3">
+                            <button
+                              onClick={retakeVideo}
+                              className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors mr-3"
+                            >
+                              🔄 Retake Video
+                            </button>
+
+                            <div className="mt-4">
+                              <GradientButton
+                                onClick={() => setCurrentStep(2)}
+                                className="w-full py-4 text-lg font-semibold rounded-full"
+                              >
+                                💰 Go to last step for ₹50
+                              </GradientButton>
+                              <p className="text-xs text-gray-500 mt-2 text-center">You are almost there! 🎉</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // Upload Interface
+                  <>
+                    {!uploadedFile ? (
+                      <div className="text-center">
+                        <div
+                          className={`file-drop-zone p-8 mb-4 ${isDragOver ? "drag-over" : ""}`}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handleDrop}
+                        >
+                          <div className="text-4xl mb-3">📁</div>
+                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Upload Your Video</h3>
+                          <p className="text-gray-600 text-sm mb-4">
+                            Drag and drop your video here, or click to browse
+                          </p>
+                          <p className="text-xs text-gray-500 mb-4">
+                            Supported formats: MP4, WebM, MOV, AVI (Max 50MB)
+                          </p>
+
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="video/*"
+                            onChange={handleFileInputChange}
+                            className="hidden"
+                          />
+
+                          <GradientButton
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-6 py-3 text-base font-semibold rounded-full"
+                          >
+                            📂 Choose Video File
+                          </GradientButton>
+                        </div>
+
+                        {uploadError && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
+                            <p className="text-red-600 text-sm">{uploadError}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <div className="bg-[#E8F3E8] rounded-xl p-4 mb-4">
+                          <div className="text-3xl mb-2">✅</div>
+                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Uploaded!</h3>
+                          <p className="text-gray-600 text-sm mb-4">
+                            File: {uploadedFile.name} ({(uploadedFile.size / (1024 * 1024)).toFixed(1)}MB)
+                          </p>
+
+                          {uploadedVideoUrl && (
+                            <video
+                              src={uploadedVideoUrl}
+                              controls
+                              className="w-full max-w-xs mx-auto rounded-lg shadow-lg mb-4"
+                              style={{
+                                maxHeight: "200px",
+                              }}
+                            />
+                          )}
+
+                          <div className="space-y-3">
+                            <button
+                              onClick={clearUploadedVideo}
+                              className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors mr-3"
+                            >
+                              🔄 Choose Different Video
+                            </button>
+
+                            <div className="mt-4">
+                              <GradientButton
+                                onClick={() => setCurrentStep(2)}
+                                className="w-full py-4 text-lg font-semibold rounded-full"
+                              >
+                                💰 Go to last step for ₹50
+                              </GradientButton>
+                              <p className="text-xs text-gray-500 mt-2 text-center">You are almost there! 🎉</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {errors.video && (
@@ -776,7 +988,6 @@ export default function SubmitFeedback() {
                   <div className="col-span-2">
                     <label className="block text-sm font-semibold text-[#4A2B6B] mb-3">⭐ How does it fit? *</label>
 
-                    {/* Slider */}
                     <div className="relative">
                       <input
                         type="range"
@@ -868,7 +1079,7 @@ export default function SubmitFeedback() {
                   <div className="pt-4">
                     <GradientButton
                       type="submit"
-                      disabled={isSubmitting || isUploading || !recordedVideo}
+                      disabled={isSubmitting || isUploading || !getCurrentVideo()}
                       className="w-full py-4 text-lg font-semibold rounded-full"
                     >
                       {isSubmitting ? "🔄 Submitting..." : isUploading ? "⬆️ Uploading..." : "💰 Submit & Earn ₹50"}
@@ -888,7 +1099,6 @@ export default function SubmitFeedback() {
       {/* Full-Screen Recording Modal */}
       {showRecordingModal && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
-          {/* Header */}
           <div className="bg-gradient-to-r from-[#4A2B6B] to-[#6B46C1] text-white p-4 flex justify-between items-center">
             <h2 className="text-xl font-bold">🎥 Recording Your Feedback</h2>
             <button onClick={closeRecordingModal} className="text-white hover:text-gray-200 text-2xl">
@@ -896,13 +1106,10 @@ export default function SubmitFeedback() {
             </button>
           </div>
 
-          {/* Video Preview */}
           <div className="flex-1 relative">
             <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
 
-            {/* Recording Overlay */}
             <div className="absolute inset-0 flex flex-col justify-between p-6">
-              {/* Top Tips */}
               <div className="bg-black bg-opacity-30 rounded-xl p-4 text-white">
                 <h3 className="font-semibold mb-2">💡 Recording Tips:</h3>
                 <div className="text-sm space-y-1">
@@ -912,16 +1119,12 @@ export default function SubmitFeedback() {
                 </div>
               </div>
 
-              {/* Bottom Controls */}
               <div className="text-center">
-                {/* Timer */}
                 <div className="bg-black bg-opacity-50 rounded-full px-6 py-3 text-white text-xl font-bold mb-4 inline-block">
                   {formatTime(recordingTime)} / 1:00
                 </div>
 
-                {/* Recording Button and Flip Button */}
                 <div className="flex justify-center items-center space-x-6">
-                  {/* Flip Camera Button - Only show on mobile */}
                   {isMobile && cameraPermission === "granted" && !isRecording && (
                     <button
                       onClick={flipCamera}
@@ -939,7 +1142,6 @@ export default function SubmitFeedback() {
                     </button>
                   )}
 
-                  {/* Recording Button */}
                   {!isRecording ? (
                     <button
                       onClick={startRecording}
@@ -959,7 +1161,6 @@ export default function SubmitFeedback() {
                   )}
                 </div>
 
-                {/* Status Messages */}
                 <div className="mt-4 text-white text-center">
                   {cameraPermission === "denied" && (
                     <p className="bg-red-500 bg-opacity-75 rounded-lg px-4 py-2">
@@ -968,7 +1169,7 @@ export default function SubmitFeedback() {
                   )}
                   {isRecording && recordingTime < 10 && (
                     <p className="bg-yellow-500 bg-opacity-75 rounded-lg px-4 py-2">
-                      Record for at least 10 seconds (minimum required)
+                      Camera permission denied. Please enable camera access.
                     </p>
                   )}
                 </div>
