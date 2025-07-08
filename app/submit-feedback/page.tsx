@@ -186,8 +186,6 @@ export default function SubmitFeedback() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  // const [isCompressing, setIsCompressing] = useState(false) // Removed state
-  // const [compressionProgress, setCompressionProgress] = useState(0) // Removed state
   const [isUploading, setIsUploading] = useState(false)
 
   const [expandedGuidelines, setExpandedGuidelines] = useState<Set<number>>(new Set())
@@ -580,13 +578,16 @@ export default function SubmitFeedback() {
         throw new Error(feedbackResult.error || "Failed to create feedback record")
       }
 
-      // setIsCompressing(false)
       setIsUploading(true)
       console.log("Feedback created, now uploading video...")
 
-      // Step 3: Upload video using FormData to dedicated API route
+      // Upload video directly without compression
       const uploadFormData = new FormData()
-      uploadFormData.append("video", currentVideo, videoSource === "record" ? "feedback-video.webm" : currentVideo.name) // Updated line
+      uploadFormData.append(
+        "video",
+        currentVideo,
+        videoSource === "record" ? "feedback-video.webm" : (currentVideo as File).name,
+      )
       uploadFormData.append("feedbackId", feedbackResult.feedbackId)
       uploadFormData.append("sessionId", sessionId)
       uploadFormData.append("source", videoSource)
@@ -595,6 +596,11 @@ export default function SubmitFeedback() {
         method: "POST",
         body: uploadFormData,
       })
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text()
+        throw new Error(`Upload failed: ${uploadResponse.status} ${errorText}`)
+      }
 
       const uploadResult = await uploadResponse.json()
 
@@ -611,7 +617,6 @@ export default function SubmitFeedback() {
       setSubmitError(error instanceof Error ? error.message : "Failed to submit feedback. Please try again.")
     } finally {
       setIsSubmitting(false)
-      // setIsCompressing(false) // Removed line
       setIsUploading(false)
     }
   }
@@ -755,23 +760,29 @@ export default function SubmitFeedback() {
                 <h2 className="text-xl font-bold text-[#1D1A2F] mb-4 font-serif">🎥 Add Your Video</h2>
 
                 {/* Tab Buttons */}
-                <div className="flex rounded-xl overflow-hidden mb-6 border-2 border-[#4A2B6B]">
-                  <button
-                    onClick={() => setVideoSource("record")}
-                    className={`flex-1 py-3 px-4 text-sm font-semibold transition-colors ${
-                      videoSource === "record" ? "tab-active" : "tab-inactive"
-                    }`}
-                  >
-                    📹 Record Video
-                  </button>
-                  <button
-                    onClick={() => setVideoSource("upload")}
-                    className={`flex-1 py-3 px-4 text-sm font-semibold transition-colors ${
-                      videoSource === "upload" ? "tab-active" : "tab-inactive"
-                    }`}
-                  >
-                    📁 Upload Video
-                  </button>
+                <div className="bg-gray-100 p-1 rounded-xl mb-6">
+                  <div className="flex">
+                    <button
+                      onClick={() => setVideoSource("record")}
+                      className={`flex-1 py-3 px-4 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                        videoSource === "record"
+                          ? "bg-[#4A2B6B] text-white shadow-md transform scale-[0.98]"
+                          : "text-[#4A2B6B] hover:bg-gray-200"
+                      }`}
+                    >
+                      📹 Record Video
+                    </button>
+                    <button
+                      onClick={() => setVideoSource("upload")}
+                      className={`flex-1 py-3 px-4 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                        videoSource === "upload"
+                          ? "bg-[#4A2B6B] text-white shadow-md transform scale-[0.98]"
+                          : "text-[#4A2B6B] hover:bg-gray-200"
+                      }`}
+                    >
+                      📁 Upload Video
+                    </button>
+                  </div>
                 </div>
 
                 {/* Video Content Based on Selected Tab */}
