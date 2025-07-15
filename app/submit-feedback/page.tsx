@@ -5,10 +5,10 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/app/context/auth-context"
 import { createFeedbackRecord } from "@/app/actions/feedback"
-import { getSupabaseImageUrl } from "@/app/utils/helpers"
+import { uploadLargeVideoToBlob } from "@/app/utils/vercel-blob-upload"
 import { GradientButton } from "@/components/ui/gradient-button"
+import { Progress } from "@/components/ui/progress"
 
-// Add satin sheen effect
 const allStyles = `
   .satin-header::before {
     content: "";
@@ -61,26 +61,20 @@ const allStyles = `
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
 
-  .tab-active {
-    background: #4A2B6B;
-    color: white;
-  }
-
-  .tab-inactive {
-    background: #F5EFE6;
-    color: #4A2B6B;
-    border: 2px solid #4A2B6B;
-  }
-
-  .file-drop-zone {
-    border: 2px dashed #4A2B6B;
-    border-radius: 12px;
+  .upload-zone {
+    border: 2px dashed #d1d5db;
     transition: all 0.3s ease;
   }
 
-  .file-drop-zone.drag-over {
-    border-color: #6B46C1;
-    background-color: rgba(74, 43, 107, 0.05);
+  .upload-zone:hover {
+    border-color: #4A2B6B;
+    background-color: #f9fafb;
+  }
+
+  .upload-zone.drag-over {
+    border-color: #4A2B6B;
+    background-color: #f3f4f6;
+    transform: scale(1.02);
   }
 `
 
@@ -89,29 +83,21 @@ const guideSteps = [
     title: "Choose any clothing item",
     description:
       "You can try on any piece of clothing from your wardrobe or recent purchase. For your reward to be processed, you must provide a link to the product page of the same item from the same brand in your feedback.",
-    image: getSupabaseImageUrl("images", "fitback_guide_link.png"),
-    fallback: "/placeholder.svg?height=300&width=400&text=Product+Link+Guide",
   },
   {
     title: "Show how the garment fits",
     description:
       "Record a video showing how the garment fits on different parts of your body. Mention if it's tight, loose, or just right around specific areas.",
-    image: getSupabaseImageUrl("images", "fitback_guide_fit.png"),
-    fallback: "/placeholder.svg?height=300&width=400&text=Fit+Guide",
   },
   {
     title: "Describe the material",
     description:
       "Talk about how the fabric feels - is it soft, stiff, breathable, or stretchy? This helps others understand the comfort level of the garment.",
-    image: getSupabaseImageUrl("images", "fitback_guide_fabric.png"),
-    fallback: "/placeholder.svg?height=300&width=400&text=Fabric+Guide",
   },
   {
     title: "Try different poses",
     description:
       "Show the garment from different angles and in different poses to give a complete picture of the fit and how it moves with your body.",
-    image: getSupabaseImageUrl("images", "fitback_guide_pose.png"),
-    fallback: "/placeholder.svg?height=300&width=400&text=Pose+Guide",
   },
 ]
 
@@ -140,35 +126,35 @@ interface FeedbackForm {
   additionalComments: string
 }
 
+interface UploadProgress {
+  uploadedBytes: number
+  totalBytes: number
+  percentage: number
+}
+
 export default function SubmitFeedback() {
   const { user, isAuthenticated, isLoading, sessionId } = useAuth()
   const router = useRouter()
 
-  // Video source selection
-  const [videoSource, setVideoSource] = useState<VideoSource>("record")
-
-  // Video recording refs and states
+  // Video refs
   const videoRef = useRef<HTMLVideoElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Recording states
+  // Video source and states
+  const [videoSource, setVideoSource] = useState<VideoSource>("record")
   const [isRecording, setIsRecording] = useState(false)
   const [recordedVideo, setRecordedVideo] = useState<Blob | null>(null)
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null)
+  const [uploadedVideo, setUploadedVideo] = useState<File | null>(null)
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
   const [showRecordingModal, setShowRecordingModal] = useState(false)
   const [cameraPermission, setCameraPermission] = useState<"granted" | "denied" | "prompt">("prompt")
 
-  // Upload states
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [isDragOver, setIsDragOver] = useState(false)
-
-  // Add after existing state declarations
+  // Mobile and camera states
   const [isMobile, setIsMobile] = useState(false)
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user")
 
@@ -177,7 +163,6 @@ export default function SubmitFeedback() {
     productUrl: "",
     brand: "",
     size: "",
-    // Remove fitScore: 5, - no default selection
     keptStatus: "kept",
     additionalComments: "",
   })
@@ -187,103 +172,33 @@ export default function SubmitFeedback() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
-
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
   const [expandedGuidelines, setExpandedGuidelines] = useState<Set<number>>(new Set())
-
   const [currentStep, setCurrentStep] = useState(1)
-
   const [currentFactIndex, setCurrentFactIndex] = useState(0)
+  const [isDragOver, setIsDragOver] = useState(false)
 
-  // Get current video for submission
+  // Helper functions
   const getCurrentVideo = (): Blob | File | null => {
-    return videoSource === "record" ? recordedVideo : uploadedFile
+    return videoSource === "record" ? recordedVideo : uploadedVideo
   }
 
   const getCurrentVideoUrl = (): string | null => {
     return videoSource === "record" ? recordedVideoUrl : uploadedVideoUrl
   }
 
-  const getVideoDuration = (): number => {
-    return videoSource === "record" ? recordingTime : 0 // We'll implement duration detection for uploads later
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  // File validation
-  const validateVideoFile = (file: File): string | null => {
-    // Check file size (50MB limit)
-    const maxSize = 50 * 1024 * 1024
-    if (file.size > maxSize) {
-      return "File size must be less than 50MB"
-    }
-
-    // Check file type
-    const allowedTypes = ["video/mp4", "video/webm", "video/quicktime", "video/mov", "video/avi"]
-    if (!allowedTypes.includes(file.type.toLowerCase())) {
-      return "Please upload a video file (MP4, WebM, MOV, or AVI)"
-    }
-
-    return null
+  const formatFileSize = (bytes: number) => {
+    const mb = bytes / (1024 * 1024)
+    return `${mb.toFixed(1)}MB`
   }
 
-  // File upload handlers
-  const handleFileSelect = (file: File) => {
-    setUploadError(null)
-
-    const validationError = validateVideoFile(file)
-    if (validationError) {
-      setUploadError(validationError)
-      return
-    }
-
-    setUploadedFile(file)
-    const url = URL.createObjectURL(file)
-    setUploadedVideoUrl(url)
-
-    // Clear any existing errors
-    if (errors.video) {
-      setErrors({ ...errors, video: "" })
-    }
-  }
-
-  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      handleFileSelect(file)
-    }
-  }
-
-  const handleDragOver = (event: React.DragEvent) => {
-    event.preventDefault()
-    setIsDragOver(true)
-  }
-
-  const handleDragLeave = (event: React.DragEvent) => {
-    event.preventDefault()
-    setIsDragOver(false)
-  }
-
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault()
-    setIsDragOver(false)
-
-    const files = event.dataTransfer.files
-    if (files.length > 0) {
-      handleFileSelect(files[0])
-    }
-  }
-
-  const clearUploadedVideo = () => {
-    setUploadedFile(null)
-    if (uploadedVideoUrl) {
-      URL.revokeObjectURL(uploadedVideoUrl)
-      setUploadedVideoUrl(null)
-    }
-    setUploadError(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
-  // Timer for recording
+  // Recording functions
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
@@ -291,77 +206,6 @@ export default function SubmitFeedback() {
     }
   }, [isRecording])
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (isRecording) {
-      interval = setInterval(() => {
-        setRecordingTime((prev) => {
-          if (prev >= 60) {
-            stopRecording()
-            return 60
-          }
-          return prev + 1
-        })
-      }, 1000)
-    }
-    return () => clearInterval(interval)
-  }, [isRecording, stopRecording])
-
-  // Add mobile detection
-  useEffect(() => {
-    const checkMobile = () => {
-      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
-      const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
-        userAgent.toLowerCase(),
-      )
-      setIsMobile(isMobileDevice)
-    }
-
-    checkMobile()
-  }, [])
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (isUploading) {
-      // Updated condition
-      interval = setInterval(() => {
-        setCurrentFactIndex((prev) => (prev + 1) % fashionFacts.length)
-      }, 3000) // Change fact every 3 seconds
-    }
-    return () => clearInterval(interval)
-  }, [isUploading])
-
-  const toggleGuideline = (index: number) => {
-    setExpandedGuidelines((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(index)) {
-        newSet.delete(index)
-      } else {
-        newSet.add(index)
-      }
-      return newSet
-    })
-  }
-
-  // Auth check
-  if (isLoading) {
-    return (
-      <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center bg-[#F5EFE6]">
-        <div className="w-full max-w-md mx-auto h-full flex flex-col relative">
-          <div className="flex-1 px-6 py-6 flex flex-col items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4A2B6B] mb-4"></div>
-            <p className="text-[#4A2B6B] font-medium">Loading...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated || !user) {
-    return null // Middleware will redirect
-  }
-
-  // Camera permission and setup
   const requestCameraPermission = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -385,38 +229,6 @@ export default function SubmitFeedback() {
       console.error("Camera permission denied:", error)
       setCameraPermission("denied")
       return false
-    }
-  }
-
-  const flipCamera = async () => {
-    const newFacingMode = facingMode === "user" ? "environment" : "user"
-    setFacingMode(newFacingMode)
-
-    // Stop current stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-    }
-
-    // Start new stream with flipped camera
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: newFacingMode,
-        },
-        audio: true,
-      })
-
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-    } catch (error) {
-      console.error("Error flipping camera:", error)
-      // Revert to previous facing mode if flip fails
-      setFacingMode(facingMode)
     }
   }
 
@@ -448,16 +260,15 @@ export default function SubmitFeedback() {
         setRecordedVideoUrl(URL.createObjectURL(blob))
         setShowRecordingModal(false)
 
-        // Stop camera stream
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop())
           streamRef.current = null
         }
       }
 
-      mediaRecorder.start(1000) // Collect data every second
+      mediaRecorder.start(1000)
       setIsRecording(true)
-      setRecordingTime(0) // Reset timer when starting new recording
+      setRecordingTime(0)
     } catch (error) {
       console.error("Error starting recording:", error)
       alert("Failed to start recording. Please try again.")
@@ -473,7 +284,6 @@ export default function SubmitFeedback() {
     setShowRecordingModal(false)
     setIsRecording(false)
 
-    // Stop camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
@@ -481,12 +291,117 @@ export default function SubmitFeedback() {
   }
 
   const retakeVideo = () => {
-    setRecordedVideo(null)
-    if (recordedVideoUrl) {
-      URL.revokeObjectURL(recordedVideoUrl)
-      setRecordedVideoUrl(null)
+    if (videoSource === "record") {
+      setRecordedVideo(null)
+      if (recordedVideoUrl) {
+        URL.revokeObjectURL(recordedVideoUrl)
+        setRecordedVideoUrl(null)
+      }
+      setRecordingTime(0)
+    } else {
+      setUploadedVideo(null)
+      if (uploadedVideoUrl) {
+        URL.revokeObjectURL(uploadedVideoUrl)
+        setUploadedVideoUrl(null)
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
     }
-    setRecordingTime(0) // Reset recording time when retaking video
+  }
+
+  // File upload handling
+  const validateVideoFile = (file: File): string | null => {
+    const allowedTypes = ["video/webm", "video/mp4", "video/quicktime", "video/x-msvideo", "video/avi"]
+    if (!allowedTypes.includes(file.type)) {
+      return "Please upload a valid video file (MP4, WebM, MOV, or AVI)"
+    }
+
+    const maxSize = 50 * 1024 * 1024 // 50MB
+    if (file.size > maxSize) {
+      return "Video file must be smaller than 50MB"
+    }
+
+    return null
+  }
+
+  const handleFileUpload = (file: File) => {
+    console.log("File selected:", file)
+
+    const validationError = validateVideoFile(file)
+    if (validationError) {
+      setErrors({ ...errors, video: validationError })
+      return
+    }
+
+    // Clear any existing uploaded video
+    if (uploadedVideoUrl) {
+      URL.revokeObjectURL(uploadedVideoUrl)
+    }
+
+    setUploadedVideo(file)
+    setUploadedVideoUrl(URL.createObjectURL(file))
+
+    // Clear any errors
+    if (errors.video) {
+      setErrors({ ...errors, video: "" })
+    }
+
+    console.log("Video uploaded successfully:", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    })
+  }
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleFileUpload(file)
+    }
+  }
+
+  // Drag and drop handlers
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    setIsDragOver(false)
+
+    const files = event.dataTransfer.files
+    if (files.length > 0) {
+      handleFileUpload(files[0])
+    }
+  }
+
+  // Video source switching
+  const switchVideoSource = (source: VideoSource) => {
+    console.log("Switching video source to:", source)
+    setVideoSource(source)
+
+    // Clear current video when switching
+    if (source === "record") {
+      setUploadedVideo(null)
+      if (uploadedVideoUrl) {
+        URL.revokeObjectURL(uploadedVideoUrl)
+        setUploadedVideoUrl(null)
+      }
+    } else {
+      setRecordedVideo(null)
+      if (recordedVideoUrl) {
+        URL.revokeObjectURL(recordedVideoUrl)
+        setRecordedVideoUrl(null)
+      }
+      setRecordingTime(0)
+    }
   }
 
   // Form handling
@@ -501,14 +416,14 @@ export default function SubmitFeedback() {
     const newErrors: Record<string, string> = {}
 
     const currentVideo = getCurrentVideo()
+    console.log("Form validation - current video:", currentVideo)
+
     if (!currentVideo) {
       newErrors.video = "Please record or upload a video showing the garment fit"
     }
 
     if (!formData.productUrl.trim()) {
       newErrors.productUrl = "Product URL is required for cashback processing"
-    } else if (!isValidUrl(formData.productUrl)) {
-      newErrors.productUrl = "Please enter a valid product URL"
     }
 
     if (!formData.brand.trim()) {
@@ -523,84 +438,38 @@ export default function SubmitFeedback() {
       newErrors.fitScore = "Please rate the fit"
     }
 
+    console.log("Form validation errors:", newErrors)
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  const isValidUrl = (url: string): boolean => {
-    try {
-      new URL(url)
-      return url.includes("http") && (url.includes(".com") || url.includes(".in") || url.includes(".org"))
-    } catch {
-      return false
-    }
+  const toggleGuideline = (index: number) => {
+    setExpandedGuidelines((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(index)) {
+        newSet.delete(index)
+      } else {
+        newSet.add(index)
+      }
+      return newSet
+    })
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setSubmitError(null)
-
-    if (!validateForm()) {
-      return
-    }
-
-    const currentVideo = getCurrentVideo()
-    if (!currentVideo) {
-      setSubmitError("Please record or upload a video")
-      return
-    }
-
-    if (videoSource === "record" && recordingTime < 10) {
-      setSubmitError("Video must be at least 10 seconds long")
-      return
-    }
-
-    if (!sessionId) {
-      setSubmitError("Authentication error. Please log in again.")
-      return
-    }
-
-    setIsSubmitting(true)
-
+  // Standard upload for files <= 5MB
+  const attemptStandardUpload = async (
+    videoBlob: Blob | File,
+    feedbackId: string,
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
-      console.log(`Using ${videoSource} video for submission...`)
-
-      const feedbackResult = await createFeedbackRecord(
-        sessionId,
-        formData.productUrl,
-        formData.brand,
-        formData.size,
-        formData.fitScore,
-        formData.keptStatus,
-      )
-
-      if (!feedbackResult.success || !feedbackResult.feedbackId) {
-        throw new Error(feedbackResult.error || "Failed to create feedback record")
-      }
-
-      setIsUploading(true)
-      console.log("Feedback created, now uploading video...")
-
-      // Upload video directly without compression
       const uploadFormData = new FormData()
-      uploadFormData.append(
-        "video",
-        currentVideo,
-        videoSource === "record" ? "feedback-video.webm" : (currentVideo as File).name,
-      )
-      uploadFormData.append("feedbackId", feedbackResult.feedbackId)
-      uploadFormData.append("sessionId", sessionId)
-      uploadFormData.append("source", videoSource)
+      uploadFormData.append("video", videoBlob, "feedback-video.webm")
+      uploadFormData.append("feedbackId", feedbackId)
+      uploadFormData.append("sessionId", sessionId!)
 
       const uploadResponse = await fetch("/api/upload-video", {
         method: "POST",
         body: uploadFormData,
       })
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text()
-        throw new Error(`Upload failed: ${uploadResponse.status} ${errorText}`)
-      }
 
       const uploadResult = await uploadResponse.json()
 
@@ -608,9 +477,117 @@ export default function SubmitFeedback() {
         throw new Error(uploadResult.error || "Failed to upload video")
       }
 
-      console.log("Video uploaded successfully:", uploadResult)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Upload failed",
+      }
+    }
+  }
 
-      // Success!
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setSubmitError(null)
+
+    console.log("=== FORM SUBMISSION DEBUG ===")
+    console.log("Session ID:", sessionId)
+    console.log("User:", user)
+    console.log("Is Authenticated:", isAuthenticated)
+    console.log("Form Data:", formData)
+    console.log("Video Source:", videoSource)
+    console.log("Current Video:", getCurrentVideo())
+    console.log("Video Size:", getCurrentVideo()?.size)
+
+    if (!validateForm()) {
+      console.log("Form validation failed")
+      return
+    }
+
+    const currentVideo = getCurrentVideo()
+    if (!currentVideo) {
+      setSubmitError("Please record or upload a video")
+      console.log("No video available")
+      return
+    }
+
+    if (videoSource === "record" && recordingTime < 10) {
+      setSubmitError("Recorded video must be at least 10 seconds long")
+      console.log("Recorded video too short:", recordingTime)
+      return
+    }
+
+    if (!sessionId) {
+      setSubmitError("Authentication error. Please log in again.")
+      console.log("No session ID available")
+      return
+    }
+
+    const videoSizeMB = currentVideo.size / (1024 * 1024)
+    const MAX_FILE_SIZE_MB = 50
+
+    if (videoSizeMB > MAX_FILE_SIZE_MB) {
+      setSubmitError(
+        `Video file is too large (${videoSizeMB.toFixed(1)}MB). Please use a smaller video file (under ${MAX_FILE_SIZE_MB}MB).`,
+      )
+      console.log("Video file too large:", videoSizeMB)
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      console.log("Creating feedback record...")
+
+      const feedbackResult = await createFeedbackRecord(
+        sessionId,
+        formData.productUrl,
+        formData.brand,
+        formData.size,
+        formData.fitScore!,
+        formData.keptStatus,
+      )
+
+      console.log("Feedback creation result:", feedbackResult)
+
+      if (!feedbackResult.success || !feedbackResult.feedbackId) {
+        throw new Error(feedbackResult.error || "Failed to create feedback record")
+      }
+
+      setIsUploading(true)
+      console.log("Upload started - video size:", videoSizeMB, "MB")
+
+      const STANDARD_UPLOAD_LIMIT_MB = 5
+      let uploadResult: { success: boolean; error?: string }
+
+      if (videoSizeMB <= STANDARD_UPLOAD_LIMIT_MB) {
+        console.log(`Using standard upload for ${videoSizeMB.toFixed(1)}MB file`)
+        uploadResult = await attemptStandardUpload(currentVideo, feedbackResult.feedbackId)
+      } else {
+        console.log(`Using chunked upload for ${videoSizeMB.toFixed(1)}MB file`)
+        
+        // Convert Blob to File if needed
+        const videoFile = currentVideo instanceof File 
+          ? currentVideo 
+          : new File([currentVideo], "feedback-video.webm", { type: "video/webm" })
+        
+        uploadResult = await uploadLargeVideoToBlob(
+          videoFile, 
+          feedbackResult.feedbackId, 
+          sessionId, 
+          (progress) => {
+            setUploadProgress(progress)
+          }
+        )
+      }
+
+      console.log("Upload result:", uploadResult)
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || "Failed to upload video")
+      }
+
+      console.log("Video uploaded successfully")
       router.push("/feedback-success")
     } catch (error) {
       console.error("Error submitting feedback:", error)
@@ -618,13 +595,64 @@ export default function SubmitFeedback() {
     } finally {
       setIsSubmitting(false)
       setIsUploading(false)
+      setUploadProgress(null)
     }
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
+  // Effects
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime((prev) => {
+          if (prev >= 60) {
+            stopRecording()
+            return 60
+          }
+          return prev + 1
+        })
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [isRecording, stopRecording])
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
+      const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
+        userAgent.toLowerCase(),
+      )
+      setIsMobile(isMobileDevice)
+    }
+    checkMobile()
+  }, [])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isUploading) {
+      interval = setInterval(() => {
+        setCurrentFactIndex((prev) => (prev + 1) % fashionFacts.length)
+      }, 3000)
+    }
+    return () => clearInterval(interval)
+  }, [isUploading])
+
+  // Auth check
+  if (isLoading) {
+    return (
+      <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center bg-[#F5EFE6]">
+        <div className="w-full max-w-md mx-auto h-full flex flex-col relative">
+          <div className="flex-1 px-6 py-6 flex flex-col items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4A2B6B] mb-4"></div>
+            <p className="text-[#4A2B6B] font-medium">Loading...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated || !user) {
+    return null
   }
 
   return (
@@ -655,9 +683,7 @@ export default function SubmitFeedback() {
         {/* Progress Tracker */}
         <div
           className="bg-white rounded-3xl p-4 mx-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)] relative z-20"
-          style={{
-            marginTop: "-5%",
-          }}
+          style={{ marginTop: "-5%" }}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -702,10 +728,9 @@ export default function SubmitFeedback() {
         >
           {currentStep === 1 ? (
             <>
-              {/* Step 1: Recording Guidelines and Video Recording */}
-              <div className="text-center mb-6"></div>
+              {/* Step 1: Video Recording/Upload */}
 
-              {/* Compact Recording Guide */}
+              {/* Recording Guidelines */}
               <div className="bg-white rounded-3xl p-4 mb-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
                 <h2 className="text-lg font-bold text-[#1D1A2F] mb-3 font-serif">📖 Recording Guidelines</h2>
                 <p className="text-xs text-gray-600 mb-3">Include these elements in your video to get Rs 50!</p>
@@ -755,49 +780,55 @@ export default function SubmitFeedback() {
                 </div>
               </div>
 
-              {/* Video Tab Selection */}
+              {/* Video Source Toggle */}
               <div className="bg-white rounded-3xl p-6 mb-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
                 <h2 className="text-xl font-bold text-[#1D1A2F] mb-4 font-serif">🎥 Add Your Video</h2>
 
-                {/* Tab Buttons */}
-                <div className="bg-gray-100 p-1 rounded-xl mb-6">
-                  <div className="flex">
+                {/* Premium Toggle Buttons */}
+                <div className="relative bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-1 mb-6 shadow-inner">
+                  <div className="flex relative">
                     <button
-                      onClick={() => setVideoSource("record")}
-                      className={`flex-1 py-3 px-4 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                      onClick={() => switchVideoSource("record")}
+                      className={`flex-1 py-4 px-6 rounded-xl font-semibold text-sm transition-all duration-300 relative ${
                         videoSource === "record"
-                          ? "bg-[#4A2B6B] text-white shadow-md transform scale-[0.98]"
-                          : "text-[#4A2B6B] hover:bg-gray-200"
+                          ? "bg-white text-[#4A2B6B] shadow-lg shadow-purple-100 transform scale-[1.02]"
+                          : "text-gray-600 hover:text-gray-800"
                       }`}
                     >
-                      📹 Record Video
+                      <div className="flex items-center justify-center space-x-2">
+                        <span className="text-lg">📹</span>
+                        <span>Record Now</span>
+                      </div>
                     </button>
                     <button
-                      onClick={() => setVideoSource("upload")}
-                      className={`flex-1 py-3 px-4 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                      onClick={() => switchVideoSource("upload")}
+                      className={`flex-1 py-4 px-6 rounded-xl font-semibold text-sm transition-all duration-300 relative ${
                         videoSource === "upload"
-                          ? "bg-[#4A2B6B] text-white shadow-md transform scale-[0.98]"
-                          : "text-[#4A2B6B] hover:bg-gray-200"
+                          ? "bg-white text-[#4A2B6B] shadow-lg shadow-purple-100 transform scale-[1.02]"
+                          : "text-gray-600 hover:text-gray-800"
                       }`}
                     >
-                      📁 Upload Video
+                      <div className="flex items-center justify-center space-x-2">
+                        <span className="text-lg">📁</span>
+                        <span>Upload File</span>
+                      </div>
                     </button>
                   </div>
                 </div>
 
-                {/* Video Content Based on Selected Tab */}
+                {/* Video Content Based on Source */}
                 {videoSource === "record" ? (
-                  // Recording Interface
-                  <>
+                  // Recording Section
+                  <div>
                     {!recordedVideo ? (
                       <div className="text-center">
-                        <div className="bg-[#E8F3E8] rounded-2xl p-8 mb-4">
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-8 mb-4 border border-green-100">
                           <div className="text-4xl mb-3">📹</div>
-                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Ready to record?</h3>
+                          <h4 className="text-lg font-semibold text-[#1D1A2F] mb-2">Ready to record?</h4>
                           <p className="text-gray-600 text-sm mb-4">Show us how the garment fits</p>
                           <GradientButton
                             onClick={openRecordingModal}
-                            className="px-6 py-3 text-base font-semibold rounded-full"
+                            className="px-6 py-3 text-base font-semibold rounded-full shadow-lg"
                           >
                             🎬 Start Recording
                           </GradientButton>
@@ -805,62 +836,50 @@ export default function SubmitFeedback() {
                       </div>
                     ) : (
                       <div className="text-center">
-                        <div className="bg-[#E8F3E8] rounded-xl p-4 mb-4">
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 mb-4 border border-green-100">
                           <div className="text-3xl mb-2">✅</div>
-                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Recorded!</h3>
-                          <p className="text-gray-600 text-sm mb-4">Duration: {formatTime(recordingTime)}</p>
+                          <h4 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Recorded!</h4>
+                          <p className="text-gray-600 text-sm mb-2">Duration: {formatTime(recordingTime)}</p>
+                          <p className="text-gray-500 text-xs mb-4">Size: {formatFileSize(recordedVideo.size)}</p>
 
                           {recordedVideoUrl && (
                             <video
                               src={recordedVideoUrl}
                               controls
                               className="w-full max-w-xs mx-auto rounded-lg shadow-lg mb-4"
-                              style={{
-                                maxHeight: "200px",
-                              }}
+                              style={{ maxHeight: "200px" }}
                             />
                           )}
 
-                          <div className="space-y-3">
-                            <button
-                              onClick={retakeVideo}
-                              className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors mr-3"
-                            >
-                              🔄 Retake Video
-                            </button>
-
-                            <div className="mt-4">
-                              <GradientButton
-                                onClick={() => setCurrentStep(2)}
-                                className="w-full py-4 text-lg font-semibold rounded-full"
-                              >
-                                💰 Go to last step for ₹50
-                              </GradientButton>
-                              <p className="text-xs text-gray-500 mt-2 text-center">You are almost there! 🎉</p>
-                            </div>
-                          </div>
+                          <button
+                            onClick={retakeVideo}
+                            className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors shadow-md"
+                          >
+                            🔄 Retake Video
+                          </button>
                         </div>
                       </div>
                     )}
-                  </>
+                  </div>
                 ) : (
-                  // Upload Interface
-                  <>
-                    {!uploadedFile ? (
+                  // Upload Section
+                  <div>
+                    {!uploadedVideo ? (
                       <div className="text-center">
+                        {/* Drag & Drop Zone */}
                         <div
-                          className={`file-drop-zone p-8 mb-4 ${isDragOver ? "drag-over" : ""}`}
+                          className={`upload-zone bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-8 mb-4 border-2 cursor-pointer transition-all duration-300 ${
+                            isDragOver ? "drag-over" : ""
+                          }`}
                           onDragOver={handleDragOver}
                           onDragLeave={handleDragLeave}
                           onDrop={handleDrop}
+                          onClick={() => fileInputRef.current?.click()}
                         >
                           <div className="text-4xl mb-3">📁</div>
-                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Upload Your Video</h3>
+                          <h4 className="text-lg font-semibold text-[#1D1A2F] mb-2">Upload your video</h4>
                           <p className="text-gray-600 text-sm mb-4">
-                            Drag and drop your video here, or click to browse
-                          </p>
-                          <p className="text-xs text-gray-500 mb-4">
-                            Supported formats: MP4, WebM, MOV, AVI (Max 50MB)
+                            Drag & drop your video here or click to browse
                           </p>
 
                           <input
@@ -871,74 +890,63 @@ export default function SubmitFeedback() {
                             className="hidden"
                           />
 
-                          <GradientButton
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-6 py-3 text-base font-semibold rounded-full"
-                          >
+                          <GradientButton className="px-6 py-3 text-base font-semibold rounded-full shadow-lg">
                             📂 Choose Video File
                           </GradientButton>
-                        </div>
 
-                        {uploadError && (
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
-                            <p className="text-red-600 text-sm">{uploadError}</p>
-                          </div>
-                        )}
+                          <p className="text-xs text-gray-500 mt-3">
+                            Supported formats: MP4, WebM, MOV, AVI • Max size: 50MB
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-center">
-                        <div className="bg-[#E8F3E8] rounded-xl p-4 mb-4">
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 mb-4 border border-blue-100">
                           <div className="text-3xl mb-2">✅</div>
-                          <h3 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Uploaded!</h3>
-                          <p className="text-gray-600 text-sm mb-4">
-                            File: {uploadedFile.name} ({(uploadedFile.size / (1024 * 1024)).toFixed(1)}MB)
-                          </p>
+                          <h4 className="text-lg font-semibold text-[#1D1A2F] mb-2">Video Uploaded!</h4>
+                          <p className="text-gray-600 text-sm mb-2">File: {uploadedVideo.name}</p>
+                          <p className="text-gray-500 text-xs mb-4">Size: {formatFileSize(uploadedVideo.size)}</p>
 
                           {uploadedVideoUrl && (
                             <video
                               src={uploadedVideoUrl}
                               controls
                               className="w-full max-w-xs mx-auto rounded-lg shadow-lg mb-4"
-                              style={{
-                                maxHeight: "200px",
-                              }}
+                              style={{ maxHeight: "200px" }}
                             />
                           )}
 
-                          <div className="space-y-3">
-                            <button
-                              onClick={clearUploadedVideo}
-                              className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors mr-3"
-                            >
-                              🔄 Choose Different Video
-                            </button>
-
-                            <div className="mt-4">
-                              <GradientButton
-                                onClick={() => setCurrentStep(2)}
-                                className="w-full py-4 text-lg font-semibold rounded-full"
-                              >
-                                💰 Go to last step for ₹50
-                              </GradientButton>
-                              <p className="text-xs text-gray-500 mt-2 text-center">You are almost there! 🎉</p>
-                            </div>
-                          </div>
+                          <button
+                            onClick={retakeVideo}
+                            className="bg-orange-500 text-white px-4 py-2 rounded-full font-medium text-sm hover:bg-orange-600 transition-colors shadow-md"
+                          >
+                            🔄 Choose Different File
+                          </button>
                         </div>
                       </div>
                     )}
-                  </>
-                )}
-
-                {errors.video && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
-                    <p className="text-red-600 text-sm">{errors.video}</p>
                   </div>
                 )}
+
+                {/* Continue Button */}
+                {getCurrentVideo() && (
+                  <div className="mt-6">
+                    <GradientButton
+                      onClick={() => setCurrentStep(2)}
+                      className="w-full py-4 text-lg font-semibold rounded-full shadow-lg"
+                    >
+                      💰 Continue to earn ₹50
+                    </GradientButton>
+                    <p className="text-xs text-gray-500 mt-2 text-center">You are almost there! 🎉</p>
+                  </div>
+                )}
+
+                {errors.video && <p className="text-red-500 text-sm mt-2 text-center">{errors.video}</p>}
               </div>
             </>
           ) : (
             <>
-              {/* Step 2: Product Information Form */}
+              {/* Step 2: Product Details Form */}
               <div className="bg-white rounded-3xl p-6 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-[#1D1A2F] font-serif">📝 Product Details</h2>
@@ -1054,7 +1062,7 @@ export default function SubmitFeedback() {
                     />
                   </div>
 
-                  {/* Progress Indicators */}
+                  {/* Upload Progress */}
                   {isUploading && (
                     <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
                       <div className="text-center">
@@ -1063,7 +1071,26 @@ export default function SubmitFeedback() {
                             <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
                           </div>
                           <h3 className="text-lg font-semibold text-purple-800 mb-2">Uploading your video...</h3>
-                          <p className="text-sm text-purple-600">This may take a moment</p>
+
+                          {uploadProgress ? (
+                            <div className="mb-3">
+                              <Progress value={uploadProgress.percentage} className="w-full mb-2" />
+                              <div className="space-y-1">
+                                <p className="text-sm text-purple-600 font-medium">
+                                  {uploadProgress.percentage}% Complete
+                                </p>
+                                <p className="text-xs text-purple-500">
+                                  {formatFileSize(uploadProgress.uploadedBytes)} /{" "}
+                                  {formatFileSize(uploadProgress.totalBytes)}
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mb-3">
+                              <Progress value={0} className="w-full mb-2" />
+                              <p className="text-sm text-purple-600">Preparing upload...</p>
+                            </div>
+                          )}
                         </div>
 
                         <div className="bg-white rounded-lg p-4 shadow-sm">
@@ -1071,9 +1098,7 @@ export default function SubmitFeedback() {
                             <span className="text-2xl mr-2">💡</span>
                             <span className="text-sm font-medium text-gray-700">Fashion Fact:</span>
                           </div>
-                          <p className="text-sm text-gray-600 leading-relaxed animate-pulse">
-                            {fashionFacts[currentFactIndex]}
-                          </p>
+                          <p className="text-sm text-gray-600 leading-relaxed">{fashionFacts[currentFactIndex]}</p>
                         </div>
                       </div>
                     </div>
@@ -1091,7 +1116,7 @@ export default function SubmitFeedback() {
                     <GradientButton
                       type="submit"
                       disabled={isSubmitting || isUploading || !getCurrentVideo()}
-                      className="w-full py-4 text-lg font-semibold rounded-full"
+                      className="w-full py-4 text-lg font-semibold rounded-full shadow-lg"
                     >
                       {isSubmitting ? "🔄 Submitting..." : isUploading ? "⬆️ Uploading..." : "💰 Submit & Earn ₹50"}
                     </GradientButton>
@@ -1107,7 +1132,7 @@ export default function SubmitFeedback() {
         </div>
       </div>
 
-      {/* Full-Screen Recording Modal */}
+      {/* Recording Modal */}
       {showRecordingModal && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           <div className="bg-gradient-to-r from-[#4A2B6B] to-[#6B46C1] text-white p-4 flex justify-between items-center">
@@ -1136,23 +1161,6 @@ export default function SubmitFeedback() {
                 </div>
 
                 <div className="flex justify-center items-center space-x-6">
-                  {isMobile && cameraPermission === "granted" && !isRecording && (
-                    <button
-                      onClick={flipCamera}
-                      className="bg-gray-600 hover:bg-gray-700 text-white rounded-full p-4 shadow-lg transform hover:scale-105 transition-all duration-200"
-                      title="Flip Camera"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        />
-                      </svg>
-                    </button>
-                  )}
-
                   {!isRecording ? (
                     <button
                       onClick={startRecording}
@@ -1176,19 +1184,4 @@ export default function SubmitFeedback() {
                   {cameraPermission === "denied" && (
                     <p className="bg-red-500 bg-opacity-75 rounded-lg px-4 py-2">
                       Camera permission denied. Please enable camera access.
-                    </p>
-                  )}
-                  {isRecording && recordingTime < 10 && (
-                    <p className="bg-yellow-500 bg-opacity-75 rounded-lg px-4 py-2">
-                      Camera permission denied. Please enable camera access.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+                    </p>\
