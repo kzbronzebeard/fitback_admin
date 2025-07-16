@@ -565,20 +565,16 @@ export default function SubmitFeedback() {
         uploadResult = await attemptStandardUpload(currentVideo, feedbackResult.feedbackId)
       } else {
         console.log(`Using chunked upload for ${videoSizeMB.toFixed(1)}MB file`)
-        
+
         // Convert Blob to File if needed
-        const videoFile = currentVideo instanceof File 
-          ? currentVideo 
-          : new File([currentVideo], "feedback-video.webm", { type: "video/webm" })
-        
-        uploadResult = await uploadLargeVideoToBlob(
-          videoFile, 
-          feedbackResult.feedbackId, 
-          sessionId, 
-          (progress) => {
-            setUploadProgress(progress)
-          }
-        )
+        const videoFile =
+          currentVideo instanceof File
+            ? currentVideo
+            : new File([currentVideo], "feedback-video.webm", { type: "video/webm" })
+
+        uploadResult = await uploadLargeVideoToBlob(videoFile, feedbackResult.feedbackId, sessionId, (progress) => {
+          setUploadProgress(progress)
+        })
       }
 
       console.log("Upload result:", uploadResult)
@@ -878,9 +874,7 @@ export default function SubmitFeedback() {
                         >
                           <div className="text-4xl mb-3">📁</div>
                           <h4 className="text-lg font-semibold text-[#1D1A2F] mb-2">Upload your video</h4>
-                          <p className="text-gray-600 text-sm mb-4">
-                            Drag & drop your video here or click to browse
-                          </p>
+                          <p className="text-gray-600 text-sm mb-4">Drag & drop your video here or click to browse</p>
 
                           <input
                             ref={fileInputRef}
@@ -1184,4 +1178,19 @@ export default function SubmitFeedback() {
                   {cameraPermission === "denied" && (
                     <p className="bg-red-500 bg-opacity-75 rounded-lg px-4 py-2">
                       Camera permission denied. Please enable camera access.
-                    </p>\
+                    </p>
+                  )}
+                  {isRecording && recordingTime < 10 && (
+                    <p className="bg-yellow-500 bg-opacity-75 rounded-lg px-4 py-2">
+                      Record for at least 10 seconds (minimum required)
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
