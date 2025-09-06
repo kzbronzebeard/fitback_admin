@@ -94,9 +94,6 @@ interface Feedback {
   updated_at?: string
   admin_message?: string
   cashbackAmount: number
-  video_storage_path?: string | null
-  videoPath?: string | null // Alternative field name
-  video_path?: string | null // Another possible field name
 }
 
 interface UserStats {
@@ -230,35 +227,14 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.feedbacks) {
-          // Debug: Log the first feedback to see the structure
-          if (data.feedbacks.length > 0) {
-            console.log("📋 Sample feedback structure:", data.feedbacks[0])
-          }
-
-          // Filter out feedbacks that don't have a video storage path
-          // Check multiple possible field names for video path
-          const feedbacksWithVideos = data.feedbacks.filter((feedback: Feedback) => {
-            const hasVideoPath = feedback.video_storage_path || feedback.videoPath || feedback.video_path
-            return hasVideoPath && String(hasVideoPath).trim() !== ""
-          })
-
-          console.log(
-            `📹 Filtered feedbacks: ${data.feedbacks.length} total, ${feedbacksWithVideos.length} with videos`,
-          )
-          setFeedbacks(feedbacksWithVideos)
+          setFeedbacks(data.feedbacks)
         } else {
           console.error("Failed to fetch feedbacks:", data.error)
           setFeedbacks([])
         }
 
-        // Calculate comprehensive stats using filtered feedbacks
-        const feedbackList = data.success
-          ? data.feedbacks.filter((feedback: Feedback) => {
-              const hasVideoPath = feedback.video_storage_path || feedback.videoPath || feedback.video_path
-              return hasVideoPath && String(hasVideoPath).trim() !== ""
-            })
-          : []
-
+        // Calculate comprehensive stats
+        const feedbackList = data.success ? data.feedbacks : []
         const totalFeedbacks = feedbackList.length
         const pendingFeedbacks = feedbackList.filter(
           (f: Feedback) => f.status === "pending" || f.status === "submitted" || f.status === "under_review",
