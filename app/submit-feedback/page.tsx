@@ -130,6 +130,8 @@ interface UploadProgress {
   uploadedBytes: number
   totalBytes: number
   percentage: number
+  speed?: number
+  eta?: number
 }
 
 export default function SubmitFeedback() {
@@ -178,6 +180,11 @@ export default function SubmitFeedback() {
   const [currentFactIndex, setCurrentFactIndex] = useState(0)
   const [isDragOver, setIsDragOver] = useState(false)
 
+  // Enhanced upload states
+  const [uploadSpeed, setUploadSpeed] = useState<number>(0)
+  const [uploadETA, setUploadETA] = useState<number>(0)
+  const [retryAttempt, setRetryAttempt] = useState(0)
+
   // Helper functions
   const getCurrentVideo = (): Blob | File | null => {
     return videoSource === "record" ? recordedVideo : uploadedVideo
@@ -196,6 +203,18 @@ export default function SubmitFeedback() {
   const formatFileSize = (bytes: number) => {
     const mb = bytes / (1024 * 1024)
     return `${mb.toFixed(1)}MB`
+  }
+
+  const formatSpeed = (bytesPerSecond: number) => {
+    const mbps = bytesPerSecond / (1024 * 1024)
+    return `${mbps.toFixed(1)} MB/s`
+  }
+
+  const formatETA = (seconds: number) => {
+    if (seconds < 60) return `${Math.round(seconds)}s`
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.round(seconds % 60)
+    return `${mins}m ${secs}s`
   }
 
   // Recording functions
@@ -455,37 +474,6 @@ export default function SubmitFeedback() {
     })
   }
 
-  // Standard upload for files <= 5MB
-  const attemptStandardUpload = async (
-    videoBlob: Blob | File,
-    feedbackId: string,
-  ): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const uploadFormData = new FormData()
-      uploadFormData.append("video", videoBlob, "feedback-video.webm")
-      uploadFormData.append("feedbackId", feedbackId)
-      uploadFormData.append("sessionId", sessionId!)
-
-      const uploadResponse = await fetch("/api/upload-video", {
-        method: "POST",
-        body: uploadFormData,
-      })
-
-      const uploadResult = await uploadResponse.json()
-
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error || "Failed to upload video")
-      }
-
-      return { success: true }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Upload failed",
-      }
-    }
-  }
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setSubmitError(null)
@@ -555,27 +543,21 @@ export default function SubmitFeedback() {
       }
 
       setIsUploading(true)
+      setRetryAttempt(0)
       console.log("Upload started - video size:", videoSizeMB, "MB")
 
-      const STANDARD_UPLOAD_LIMIT_MB = 5
-      let uploadResult: { success: boolean; error?: string }
+      // Convert Blob to File if needed
+      const videoFile =
+        currentVideo instanceof File
+          ? currentVideo
+          : new File([currentVideo], "feedback-video.webm", { type: "video/webm" })
 
-      if (videoSizeMB <= STANDARD_UPLOAD_LIMIT_MB) {
-        console.log(`Using standard upload for ${videoSizeMB.toFixed(1)}MB file`)
-        uploadResult = await attemptStandardUpload(currentVideo, feedbackResult.feedbackId)
-      } else {
-        console.log(`Using chunked upload for ${videoSizeMB.toFixed(1)}MB file`)
-
-        // Convert Blob to File if needed
-        const videoFile =
-          currentVideo instanceof File
-            ? currentVideo
-            : new File([currentVideo], "feedback-video.webm", { type: "video/webm" })
-
-        uploadResult = await uploadLargeVideoToBlob(videoFile, feedbackResult.feedbackId, sessionId, (progress) => {
-          setUploadProgress(progress)
-        })
-      }
+      // Enhanced upload with progress monitoring
+      const uploadResult = await uploadLargeVideoToBlob(videoFile, feedbackResult.feedbackId, sessionId, (progress) => {
+        setUploadProgress(progress)
+        if (progress.speed) setUploadSpeed(progress.speed)
+        if (progress.eta) setUploadETA(progress.eta)
+      })
 
       console.log("Upload result:", uploadResult)
 
@@ -587,11 +569,23 @@ export default function SubmitFeedback() {
       router.push("/feedback-success")
     } catch (error) {
       console.error("Error submitting feedback:", error)
-      setSubmitError(error instanceof Error ? error.message : "Failed to submit feedback. Please try again.")
+
+      // Extract retry attempt from error message if present
+      const errorMessage = error instanceof Error ? error.message : "Failed to submit feedback. Please try again."
+      if (errorMessage.includes("attempt")) {
+        const match = errorMessage.match(/attempt (\d+)/)
+        if (match) {
+          setRetryAttempt(Number.parseInt(match[1]))
+        }
+      }
+
+      setSubmitError(errorMessage)
     } finally {
       setIsSubmitting(false)
       setIsUploading(false)
       setUploadProgress(null)
+      setUploadSpeed(0)
+      setUploadETA(0)
     }
   }
 
@@ -1056,7 +1050,7 @@ export default function SubmitFeedback() {
                     />
                   </div>
 
-                  {/* Upload Progress */}
+                  {/* Enhanced Upload Progress */}
                   {isUploading && (
                     <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
                       <div className="text-center">
@@ -1064,7 +1058,11 @@ export default function SubmitFeedback() {
                           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mb-3">
                             <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
                           </div>
-                          <h3 className="text-lg font-semibold text-purple-800 mb-2">Uploading your video...</h3>
+                          <h3 className="text-lg font-semibold text-purple-800 mb-2">
+                            {retryAttempt > 0
+                              ? `Retrying upload (attempt ${retryAttempt + 1})...`
+                              : "Uploading your video..."}
+                          </h3>
 
                           {uploadProgress ? (
                             <div className="mb-3">
@@ -1073,10 +1071,14 @@ export default function SubmitFeedback() {
                                 <p className="text-sm text-purple-600 font-medium">
                                   {uploadProgress.percentage}% Complete
                                 </p>
-                                <p className="text-xs text-purple-500">
-                                  {formatFileSize(uploadProgress.uploadedBytes)} /{" "}
-                                  {formatFileSize(uploadProgress.totalBytes)}
-                                </p>
+                                <div className="flex justify-center space-x-4 text-xs text-purple-500">
+                                  <span>
+                                    {formatFileSize(uploadProgress.uploadedBytes)} /{" "}
+                                    {formatFileSize(uploadProgress.totalBytes)}
+                                  </span>
+                                  {uploadSpeed > 0 && <span>Speed: {formatSpeed(uploadSpeed)}</span>}
+                                  {uploadETA > 0 && <span>ETA: {formatETA(uploadETA)}</span>}
+                                </div>
                               </div>
                             </div>
                           ) : (
@@ -1102,6 +1104,11 @@ export default function SubmitFeedback() {
                   {submitError && (
                     <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                       <p className="text-red-700 text-sm">{submitError}</p>
+                      {retryAttempt > 0 && (
+                        <p className="text-red-600 text-xs mt-1">
+                          Upload will retry automatically with optimized settings.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -1117,6 +1124,7 @@ export default function SubmitFeedback() {
 
                     <div className="mt-3 text-center text-xs text-gray-500">
                       <p>✅ Reviewed by our team • 💰 ₹50 after approval</p>
+                      <p className="mt-1">⏱️ Upload timeout: 90 seconds • 🔄 Auto-retry on failure</p>
                     </div>
                   </div>
                 </form>
